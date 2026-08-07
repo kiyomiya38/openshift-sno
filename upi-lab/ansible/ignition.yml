@@ -1,0 +1,7 @@
+---
+- name: Stage generated Ignition on the private Installer HTTP service
+  hosts: installer
+  become: true
+  gather_facts: false
+  roles:
+    - ignition_server

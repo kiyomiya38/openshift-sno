@@ -1,0 +1,33 @@
+---
+cluster_name: ocp
+base_domain: lab.k8study.com
+cluster_domain: "{{ cluster_name }}.{{ base_domain }}"
+vpc_cidr: 10.80.0.0/16
+client_vpn_cidr: 10.81.0.0/22
+cluster_stage: bootstrap
+dns_zone_serial_bootstrap: 2026080501
+dns_zone_serial_steady: 2026080502
+dns_zone_serial: "{{ dns_zone_serial_steady if cluster_stage == 'steady' else dns_zone_serial_bootstrap }}"
+
+dns_servers:
+  - 10.80.40.11
+  - 10.80.50.11
+nlb_addresses:
+  - 10.80.10.5
+  - 10.80.20.5
+  - 10.80.30.5
+
+cluster_nodes:
+  bootstrap: 10.80.10.30
+  control-plane-0: 10.80.10.10
+  control-plane-1: 10.80.20.10
+  control-plane-2: 10.80.30.10
+  worker-0: 10.80.10.20
+  worker-1: 10.80.20.20
+  worker-2: 10.80.30.20
+
+registry_fqdn: "mirror-registry.{{ cluster_domain }}"
+registry_username: ocpadmin
+registry_password: "{{ lookup('env', 'REGISTRY_PASSWORD') }}"
+registry_image: "docker.io/library/registry:2.8.3@sha256:a3d8aaa63ed8681a604f1dea0aa03f100d5895b6a58ace528858a7b332415373"
+nfs_export_path: /srv/nfs/openshift

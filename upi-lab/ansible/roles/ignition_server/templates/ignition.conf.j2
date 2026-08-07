@@ -1,0 +1,8 @@
+Alias "/{{ ignition_infra_id }}/" "/var/www/html/openshift-upi-lab/{{ ignition_infra_id }}/"
+
+<Directory "/var/www/html/openshift-upi-lab/{{ ignition_infra_id }}">
+    Options -Indexes
+    AllowOverride None
+    Require ip 10.80.10.0/24 10.80.20.0/24 10.80.30.0/24 10.80.40.10
+</Directory>
+

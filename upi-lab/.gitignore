@@ -1,0 +1,40 @@
+# Terraform
+**/.terraform/
+**/*.tfstate
+**/*.tfstate.*
+**/*.tfplan
+**/*.tfplan.*
+
+# Secrets and generated cluster credentials
+**/pull-secret*.json
+**/*.key
+**/*.pem
+**/*.p12
+**/*.pfx
+**/*.ovpn
+**/*.crt
+**/*.csr
+**/auth/
+**/*kubeconfig*
+**/*.ign
+**/install-config.yaml
+**/metadata.json
+**/.env
+**/.env.*
+!**/.env.example
+
+# Ansible and local output
+**/*.retry
+logs/*
+!logs/.gitkeep
+artifacts/
+dist/
+
+# Local editor, OS, and temporary files
+.DS_Store
+Thumbs.db
+**/*~
+**/*.bak
+**/*.tmp
+**/__pycache__/
+**/*.pyc

@@ -1,0 +1,13 @@
+#!/usr/bin/env bash
+export AWS_REGION="ap-northeast-3"
+export AWS_PROFILE="ocp-lab"
+export CLUSTER_NAME="ocp-sno"
+export BASE_DOMAIN="example.jp"
+export INSTALL_DIR="${HOME}/ocp-install"
+# 空欄ならインストール済みバイナリのバージョンを採用する。
+export OPENSHIFT_VERSION="latest-4.21"
+# scripts/01 が大阪リージョンで候補を確認する。利用可能な型を設定する。
+export CONTROL_PLANE_INSTANCE_TYPE="m6i.2xlarge"
+export CONTROL_PLANE_VOLUME_SIZE="150"
+export PULL_SECRET_FILE="${HOME}/.secrets/pull-secret.txt"
+export SSH_PUBLIC_KEY_FILE="${HOME}/.ssh/id_ed25519.pub"

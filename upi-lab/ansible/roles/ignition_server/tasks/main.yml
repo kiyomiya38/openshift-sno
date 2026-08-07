@@ -1,0 +1,124 @@
+---
+- name: Validate Ignition staging variables
+  ansible.builtin.assert:
+    that:
+      - ignition_source_dir is defined
+      - ignition_source_dir | length > 0
+      - ignition_infra_id is defined
+      - ignition_infra_id is match('^[a-z0-9-]+$')
+    fail_msg: Set ignition_source_dir and a valid ignition_infra_id before staging Ignition.
+
+- name: Check local Ignition assets
+  ansible.builtin.stat:
+    path: "{{ ignition_source_dir }}/{{ item }}"
+  loop:
+    - bootstrap.ign
+    - master.ign
+    - worker.ign
+    - SHA512SUMS
+  delegate_to: localhost
+  become: false
+  register: ignition_server_local_assets
+
+- name: Require every local Ignition asset
+  ansible.builtin.assert:
+    that:
+      - item.stat.exists
+      - item.stat.isreg
+    fail_msg: "Missing local Ignition asset: {{ item.item }}"
+  loop: "{{ ignition_server_local_assets.results }}"
+  loop_control:
+    label: "{{ item.item }}"
+
+- name: Install Apache HTTP Server
+  ansible.builtin.dnf:
+    name: httpd
+    state: present
+
+- name: Label the private Ignition HTTP port for SELinux
+  community.general.seport:
+    ports: "8080"
+    proto: tcp
+    setype: http_port_t
+    state: present
+
+- name: Bind Apache only to the Installer private address
+  ansible.builtin.lineinfile:
+    path: /etc/httpd/conf/httpd.conf
+    regexp: '^Listen\s+'
+    line: Listen 10.80.40.10:8080
+  notify: Restart httpd
+
+- name: Create the private Ignition document directory
+  ansible.builtin.file:
+    path: "/var/www/html/openshift-upi-lab/{{ ignition_infra_id }}"
+    state: directory
+    owner: root
+    group: apache
+    mode: "0750"
+
+- name: Stage role Ignition files and checksums
+  ansible.builtin.copy:
+    src: "{{ ignition_source_dir }}/{{ item }}"
+    dest: "/var/www/html/openshift-upi-lab/{{ ignition_infra_id }}/{{ item }}"
+    owner: root
+    group: apache
+    mode: "0640"
+  loop:
+    - bootstrap.ign
+    - master.ign
+    - worker.ign
+    - SHA512SUMS
+  no_log: true
+  notify: Restart httpd
+
+- name: Install the restricted Ignition HTTP configuration
+  ansible.builtin.template:
+    src: ignition.conf.j2
+    dest: /etc/httpd/conf.d/ignition.conf
+    owner: root
+    group: root
+    mode: "0644"
+  notify: Restart httpd
+
+- name: Permit Ignition HTTP from each cluster subnet
+  ansible.posix.firewalld:
+    rich_rule: 'rule family="ipv4" source address="{{ item }}" port port="8080" protocol="tcp" accept'
+    permanent: true
+    immediate: true
+    state: enabled
+  loop:
+    - 10.80.10.0/24
+    - 10.80.20.0/24
+    - 10.80.30.0/24
+    - 10.80.40.10/32
+
+- name: Validate the Apache configuration
+  ansible.builtin.command: /usr/sbin/httpd -t
+  changed_when: false
+
+- name: Enable the private Ignition HTTP service
+  ansible.builtin.systemd_service:
+    name: httpd
+    enabled: true
+    state: started
+
+- name: Apply pending Apache changes before verification
+  ansible.builtin.meta: flush_handlers
+
+- name: Verify staged Ignition checksums on the Installer
+  ansible.builtin.command: sha512sum -c SHA512SUMS
+  args:
+    chdir: "/var/www/html/openshift-upi-lab/{{ ignition_infra_id }}"
+  changed_when: false
+  no_log: true
+
+- name: Verify every Ignition object through private HTTP
+  ansible.builtin.uri:
+    url: "http://10.80.40.10:8080/{{ ignition_infra_id }}/{{ item }}"
+    return_content: false
+    status_code: 200
+  loop:
+    - bootstrap.ign
+    - master.ign
+    - worker.ign

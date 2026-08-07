@@ -1,0 +1,5 @@
+# Variables reported as SC2034 are serialized indirectly by phase6-common.sh.
+disable=SC2034
+external-sources=true
+severity=warning
+source-path=SCRIPTDIR

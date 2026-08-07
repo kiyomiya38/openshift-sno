@@ -1,0 +1,29 @@
+﻿apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: hello-openshift
+  namespace: sample-app
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: hello-openshift
+  template:
+    metadata:
+      labels:
+        app: hello-openshift
+    spec:
+      containers:
+      - name: web
+        # Quayで存在を確認した4.16.0を不変ダイジェストで固定する。
+        # サンプルアプリの版はOCPクラスターバージョンとは独立している。
+        image: quay.io/openshift/origin-hello-openshift@sha256:3d2cc2be080ec48a5a1a2cc1d0a762b944665212591e271a5ed6a481f885b1e3
+        ports:
+        - containerPort: 8080
+        resources:
+          requests:
+            cpu: 10m
+            memory: 32Mi
+          limits:
+            cpu: 100m
+            memory: 128Mi

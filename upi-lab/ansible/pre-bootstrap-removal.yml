@@ -1,0 +1,37 @@
+---
+- name: Prove every control-plane API and machine-config endpoint before Bootstrap removal
+  hosts: haproxy
+  become: false
+  gather_facts: false
+  serial: 1
+  vars:
+    control_plane_addresses:
+      - 10.80.10.10
+      - 10.80.20.10
+      - 10.80.30.10
+  tasks:
+    - name: Check each control-plane API ready endpoint
+      ansible.builtin.uri:
+        url: "https://{{ item }}:6443/readyz"
+        validate_certs: false
+        return_content: false
+        status_code: 200
+        timeout: 10
+      loop: "{{ control_plane_addresses }}"
+      register: control_plane_api_ready
+      until: control_plane_api_ready.status | default(0) == 200
+      retries: 12
+      delay: 5
+
+    - name: Check each control-plane machine-config endpoint
+      ansible.builtin.uri:
+        url: "https://{{ item }}:22623/healthz"
+        validate_certs: false
+        return_content: false
+        status_code: 200
+        timeout: 10
+      loop: "{{ control_plane_addresses }}"
+      register: control_plane_machine_config_ready
+      until: control_plane_machine_config_ready.status | default(0) == 200
+      retries: 12
+      delay: 5

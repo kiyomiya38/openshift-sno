@@ -1,0 +1,156 @@
+---
+- name: Require a runtime-only registry password
+  ansible.builtin.assert:
+    that:
+      - registry_password | length >= 16
+    fail_msg: Set REGISTRY_PASSWORD to a value of at least 16 characters before running the playbook.
+  no_log: true
+
+- name: Install Squid, Podman, and registry prerequisites
+  ansible.builtin.dnf:
+    name:
+      - httpd-tools
+      - podman
+      - squid
+    state: present
+
+- name: Install Squid configuration
+  ansible.builtin.template:
+    src: squid.conf.j2
+    dest: /etc/squid/squid.conf
+    owner: root
+    group: squid
+    mode: "0640"
+    validate: /usr/sbin/squid -k parse -f %s
+  notify: Restart squid
+
+- name: Create registry directories
+  ansible.builtin.file:
+    path: "{{ item.path }}"
+    state: directory
+    owner: root
+    group: root
+    mode: "{{ item.mode }}"
+  loop:
+    - { path: /opt/mirror-registry/data, mode: "0750" }
+    - { path: /opt/mirror-registry/auth, mode: "0750" }
+    - { path: /opt/mirror-registry/certs, mode: "0750" }
+    - { path: /etc/containers/systemd, mode: "0755" }
+
+- name: Check whether the registry password file exists
+  ansible.builtin.stat:
+    path: /opt/mirror-registry/auth/htpasswd
+  register: proxy_registry_htpasswd_file
+
+- name: Verify the current registry password
+  ansible.builtin.command:
+    argv:
+      - /usr/bin/htpasswd
+      - -i
+      - -v
+      - /opt/mirror-registry/auth/htpasswd
+      - "{{ registry_username }}"
+    stdin: "{{ registry_password }}"
+    stdin_add_newline: true
+  register: proxy_registry_password_check
+  changed_when: false
+  failed_when: false
+  when: proxy_registry_htpasswd_file.stat.exists
+  no_log: true
+
+- name: Create or update the registry password file
+  ansible.builtin.command:
+    argv: >-
+      {{
+        ['/usr/bin/htpasswd', '-i', '-B']
+        + (['-c'] if not proxy_registry_htpasswd_file.stat.exists else [])
+        + ['/opt/mirror-registry/auth/htpasswd', registry_username]
+      }}
+    stdin: "{{ registry_password }}"
+    stdin_add_newline: true
+  when: >-
+    not proxy_registry_htpasswd_file.stat.exists
+    or proxy_registry_password_check.rc | default(1) != 0
+  changed_when: true
+  no_log: true
+  notify: Restart mirror registry
+
+- name: Protect the registry password file
+  ansible.builtin.file:
+    path: /opt/mirror-registry/auth/htpasswd
+    owner: root
+    group: root
+    mode: "0640"
+
+- name: Install registry certificate request configuration
+  ansible.builtin.template:
+    src: registry-openssl.cnf.j2
+    dest: /opt/mirror-registry/certs/openssl.cnf
+    owner: root
+    group: root
+    mode: "0644"
+
+- name: Generate the internal registry certificate and key
+  ansible.builtin.command:
+    argv:
+      - openssl
+      - req
+      - -x509
+      - -newkey
+      - rsa:4096
+      - -sha256
+      - -nodes
+      - -days
+      - "3650"
+      - -keyout
+      - /opt/mirror-registry/certs/registry.key
+      - -out
+      - /opt/mirror-registry/certs/registry.crt
+      - -config
+      - /opt/mirror-registry/certs/openssl.cnf
+  args:
+    creates: /opt/mirror-registry/certs/registry.crt
+  notify: Restart mirror registry
+
+- name: Protect registry private key
+  ansible.builtin.file:
+    path: /opt/mirror-registry/certs/registry.key
+    owner: root
+    group: root
+    mode: "0600"
+
+- name: Install mirror registry Quadlet
+  ansible.builtin.template:
+    src: mirror-registry.container.j2
+    dest: /etc/containers/systemd/mirror-registry.container
+    owner: root
+    group: root
+    mode: "0644"
+  notify:
+    - Reload systemd
+    - Restart mirror registry
+
+- name: Open proxy and registry ports in firewalld
+  ansible.posix.firewalld:
+    port: "{{ item }}/tcp"
+    permanent: true
+    immediate: true
+    state: enabled
+  loop:
+    - "3128"
+    - "5000"
+
+- name: Enable Squid
+  ansible.builtin.systemd_service:
+    name: squid
+    enabled: true
+    state: started
+
+- name: Flush handlers before starting the registry
+  ansible.builtin.meta: flush_handlers
+
+- name: Enable the mirror registry
+  ansible.builtin.systemd_service:
+    name: mirror-registry.service
+    enabled: true
+    state: started

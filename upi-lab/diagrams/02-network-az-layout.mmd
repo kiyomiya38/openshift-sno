@@ -1,0 +1,93 @@
+flowchart TB
+  ADMIN["管理端末<br/>Client VPN CIDR 10.81.0.0/22"]:::external
+  VPN["AWS Client VPN<br/>UDP 443 / Split tunnel<br/>相互証明書認証"]:::aws
+  NLBLOGICAL["Internal NLB<br/>Cross-zone load balancing"]:::aws
+  PRIVATE_ROUTE["Cluster / Infra共通Private Route Table<br/>0.0.0.0/0 → NAT-a"]:::network
+  IGW["Internet Gateway"]:::aws
+
+  subgraph VPC["VPC 10.80.0.0/16 — ap-northeast-3"]
+    direction TB
+
+    subgraph AZA["Availability Zone 3a"]
+      direction TB
+      subgraph PUBA["Public-a 10.80.110.0/24"]
+        NATA["NAT Gateway + EIP<br/>1台のみ / 単一障害点"]:::single
+      end
+      subgraph INFAA["Infra-a 10.80.40.0/24"]
+        CVPNA["Client VPN association"]:::aws
+        INSTALLER["Installer .10"]:::infra
+        DNS0["DNS/NTP-0 .11"]:::infra
+        HA0["HAProxy-0 .21"]:::infra
+        PROXY["Proxy/Registry .31<br/>単一障害点"]:::single
+        NFS["NFS-0 .41<br/>単一障害点"]:::single
+      end
+      subgraph CLUSTERA["Cluster-a 10.80.10.0/24"]
+        NLBA["NLB .5"]:::aws
+        CP0["Control Plane-0 .10"]:::cluster
+        WK0["Worker-0 .20"]:::cluster
+        BOOT["Bootstrap .30<br/>構築時のみ"]:::temporary
+      end
+    end
+
+    subgraph AZB["Availability Zone 3b"]
+      direction TB
+      subgraph PUBB["Public-b 10.80.120.0/24"]
+        PUBBEMPTY["予約 / 現在未使用"]:::unused
+      end
+      subgraph INFRAB["Infra-b 10.80.50.0/24"]
+        CVPNB["Client VPN association"]:::aws
+        DNS1["DNS/NTP-1 .11"]:::infra
+        HA1["HAProxy-1 .21"]:::infra
+      end
+      subgraph CLUSTERB["Cluster-b 10.80.20.0/24"]
+        NLBB["NLB .5"]:::aws
+        CP1["Control Plane-1 .10"]:::cluster
+        WK1["Worker-1 .20"]:::cluster
+      end
+    end
+
+    subgraph AZC["Availability Zone 3c"]
+      direction TB
+      subgraph PUBC["Public-c 10.80.130.0/24"]
+        PUBCEMPTY["予約 / 現在未使用"]:::unused
+      end
+      subgraph INFRAC["Infra-c 10.80.60.0/24"]
+        INFRACEMPTY["将来用 / 現在未使用"]:::unused
+      end
+      subgraph CLUSTERC["Cluster-c 10.80.30.0/24"]
+        NLBC["NLB .5"]:::aws
+        CP2["Control Plane-2 .10"]:::cluster
+        WK2["Worker-2 .20"]:::cluster
+      end
+    end
+  end
+
+  AZA ~~~ AZB ~~~ AZC
+
+  ADMIN -->|"Internet経由"| VPN
+  VPN -->|"Target association"| CVPNA
+  VPN -->|"Target association"| CVPNB
+
+  NLBLOGICAL -.->|"固定IP"| NLBA
+  NLBLOGICAL -.->|"固定IP"| NLBB
+  NLBLOGICAL -.->|"固定IP"| NLBC
+  NLBLOGICAL -->|"4 Target Groups"| HA0
+  NLBLOGICAL -->|"4 Target Groups"| HA1
+
+  PRIVATE_ROUTE --> NATA
+  NATA --> IGW
+
+  NOTE1["全EC2: Public IPv4なし<br/>全Subnet: 自動Public IPv4割当なし"]:::note
+  NOTE2["NATは3aのみ<br/>3b・3cの外向き通信も3aを経由"]:::note
+  NOTE1 ~~~ VPC
+  NOTE2 -.-> NATA
+
+  classDef external fill:#F7F7F7,stroke:#333333,stroke-width:2px,color:#111111;
+  classDef aws fill:#DDEBF7,stroke:#315A7D,stroke-width:2px,color:#111111;
+  classDef network fill:#EDEDED,stroke:#555555,stroke-width:2px,color:#111111;
+  classDef infra fill:#E2F0D9,stroke:#4F6F3E,stroke-width:2px,color:#111111;
+  classDef cluster fill:#FCE4D6,stroke:#8A4F2D,stroke-width:2px,color:#111111;
+  classDef temporary fill:#FFF2CC,stroke:#7F6000,stroke-width:2px,stroke-dasharray:7 4,color:#111111;
+  classDef single fill:#F4CCCC,stroke:#7A2E2E,stroke-width:3px,color:#111111;
+  classDef unused fill:#FFFFFF,stroke:#777777,stroke-width:1px,stroke-dasharray:5 4,color:#333333;
+  classDef note fill:#FFFFFF,stroke:#555555,stroke-width:1px,color:#111111;

@@ -1,0 +1,213 @@
+# Adapted from Kubernetes SIG Storage nfs-subdir-external-provisioner 4.0.18.
+# Modified for this lab; see THIRD_PARTY_NOTICES.md and licenses/Apache-2.0.txt.
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: nfs-provisioner
+  labels:
+    app.kubernetes.io/part-of: openshift-upi-lab
+---
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: nfs-subdir-external-provisioner
+  namespace: nfs-provisioner
+  labels:
+    app.kubernetes.io/name: nfs-subdir-external-provisioner
+    app.kubernetes.io/part-of: openshift-upi-lab
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: openshift-upi-lab-nfs-provisioner
+  labels:
+    app.kubernetes.io/part-of: openshift-upi-lab
+rules:
+  - apiGroups: [""]
+    resources: ["nodes"]
+    verbs: ["get", "list", "watch"]
+  - apiGroups: [""]
+    resources: ["persistentvolumes"]
+    verbs: ["get", "list", "watch", "create", "delete"]
+  - apiGroups: [""]
+    resources: ["persistentvolumeclaims"]
+    verbs: ["get", "list", "watch", "update"]
+  - apiGroups: ["storage.k8s.io"]
+    resources: ["storageclasses"]
+    verbs: ["get", "list", "watch"]
+  - apiGroups: [""]
+    resources: ["events"]
+    verbs: ["create", "update", "patch"]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: openshift-upi-lab-nfs-provisioner
+  labels:
+    app.kubernetes.io/part-of: openshift-upi-lab
+subjects:
+  - kind: ServiceAccount
+    name: nfs-subdir-external-provisioner
+    namespace: nfs-provisioner
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: openshift-upi-lab-nfs-provisioner
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: nfs-provisioner-leader-lock
+  namespace: nfs-provisioner
+  labels:
+    app.kubernetes.io/part-of: openshift-upi-lab
+rules:
+  - apiGroups: [""]
+    resources: ["endpoints"]
+    verbs: ["get", "list", "watch", "create", "update", "patch"]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: nfs-provisioner-leader-lock
+  namespace: nfs-provisioner
+  labels:
+    app.kubernetes.io/part-of: openshift-upi-lab
+subjects:
+  - kind: ServiceAccount
+    name: nfs-subdir-external-provisioner
+    namespace: nfs-provisioner
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: Role
+  name: nfs-provisioner-leader-lock
+---
+apiVersion: v1
+kind: PersistentVolume
+metadata:
+  name: nfs-subdir-provisioner-root
+  labels:
+    app.kubernetes.io/part-of: openshift-upi-lab
+spec:
+  capacity:
+    storage: 200Gi
+  volumeMode: Filesystem
+  accessModes:
+    - ReadWriteMany
+  persistentVolumeReclaimPolicy: Retain
+  storageClassName: ""
+  claimRef:
+    namespace: nfs-provisioner
+    name: nfs-subdir-provisioner-root
+  mountOptions:
+    - nfsvers=4.1
+    - proto=tcp
+    - hard
+    - timeo=600
+    - retrans=2
+  nfs:
+    server: 10.80.40.41
+    path: /srv/nfs/openshift
+    readOnly: false
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: nfs-subdir-provisioner-root
+  namespace: nfs-provisioner
+  labels:
+    app.kubernetes.io/part-of: openshift-upi-lab
+spec:
+  accessModes:
+    - ReadWriteMany
+  volumeMode: Filesystem
+  volumeName: nfs-subdir-provisioner-root
+  storageClassName: ""
+  resources:
+    requests:
+      storage: 1Gi
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: nfs-subdir-external-provisioner
+  namespace: nfs-provisioner
+  labels:
+    app.kubernetes.io/name: nfs-subdir-external-provisioner
+    app.kubernetes.io/part-of: openshift-upi-lab
+spec:
+  replicas: 1
+  strategy:
+    type: Recreate
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: nfs-subdir-external-provisioner
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: nfs-subdir-external-provisioner
+        app.kubernetes.io/part-of: openshift-upi-lab
+      annotations:
+        openshift.io/required-scc: restricted-v2
+    spec:
+      serviceAccountName: nfs-subdir-external-provisioner
+      nodeSelector:
+        node-role.kubernetes.io/worker: ""
+      securityContext:
+        supplementalGroups:
+          - 65534
+        seccompProfile:
+          type: RuntimeDefault
+      containers:
+        - name: nfs-subdir-external-provisioner
+          image: registry.k8s.io/sig-storage/nfs-subdir-external-provisioner@sha256:374f80dde8bbd498b1083348dd076b8d8d9f9b35386a793f102d5deebe593626
+          imagePullPolicy: IfNotPresent
+          securityContext:
+            allowPrivilegeEscalation: false
+            capabilities:
+              drop:
+                - ALL
+            readOnlyRootFilesystem: true
+            runAsNonRoot: true
+          env:
+            - name: PROVISIONER_NAME
+              value: lab.k8study.com/nfs-subdir-external-provisioner
+            - name: NFS_SERVER
+              value: 10.80.40.41
+            - name: NFS_PATH
+              value: /srv/nfs/openshift
+          volumeMounts:
+            - name: nfs-client-root
+              mountPath: /persistentvolumes
+          resources:
+            requests:
+              cpu: 20m
+              memory: 64Mi
+            limits:
+              cpu: 200m
+              memory: 256Mi
+      volumes:
+        - name: nfs-client-root
+          persistentVolumeClaim:
+            claimName: nfs-subdir-provisioner-root
+---
+apiVersion: storage.k8s.io/v1
+kind: StorageClass
+metadata:
+  name: nfs-rwx
+  labels:
+    app.kubernetes.io/part-of: openshift-upi-lab
+  annotations:
+    storageclass.kubernetes.io/is-default-class: "false"
+provisioner: lab.k8study.com/nfs-subdir-external-provisioner
+parameters:
+  onDelete: delete
+reclaimPolicy: Delete
+allowVolumeExpansion: false
+volumeBindingMode: Immediate
+mountOptions:
+  - nfsvers=4.1
+  - proto=tcp
+  - hard
+  - timeo=600
+  - retrans=2

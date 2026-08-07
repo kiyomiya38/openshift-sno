@@ -1,0 +1,26 @@
+$TTL 300
+@ IN SOA dns-ntp-0.{{ cluster_domain }}. hostmaster.{{ cluster_domain }}. (
+    {{ dns_zone_serial }} 300 60 86400 300 )
+  IN NS dns-ntp-0.{{ cluster_domain }}.
+  IN NS dns-ntp-1.{{ cluster_domain }}.
+
+dns-ntp-0       IN A 10.80.40.11
+dns-ntp-1       IN A 10.80.50.11
+installer       IN A 10.80.40.10
+haproxy-0       IN A 10.80.40.21
+haproxy-1       IN A 10.80.50.21
+proxy-registry  IN A 10.80.40.31
+mirror-registry IN A 10.80.40.31
+nfs-0           IN A 10.80.40.41
+
+{% for address in nlb_addresses %}
+api             IN A {{ address }}
+api-int         IN A {{ address }}
+*.apps          IN A {{ address }}
+{% endfor %}
+
+{% for node_name, node_ip in cluster_nodes.items() %}
+{% if node_name != 'bootstrap' or cluster_stage == 'bootstrap' %}
+{{ "%-16s" | format(node_name) }} IN A {{ node_ip }}
+{% endif %}
+{% endfor %}

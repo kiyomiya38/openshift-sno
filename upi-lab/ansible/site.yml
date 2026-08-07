@@ -1,0 +1,30 @@
+---
+- name: Apply common infrastructure baseline
+  hosts: all
+  become: true
+  roles:
+    - common
+
+- name: Configure authoritative DNS and NTP
+  hosts: dns_ntp
+  become: true
+  roles:
+    - dns_ntp
+
+- name: Configure HAProxy pair
+  hosts: haproxy
+  become: true
+  roles:
+    - haproxy
+
+- name: Configure Squid and the internal mirror registry
+  hosts: proxy_registry
+  become: true
+  roles:
+    - proxy_registry
+
+- name: Configure NFS storage
+  hosts: nfs
+  become: true
+  roles:
+    - nfs

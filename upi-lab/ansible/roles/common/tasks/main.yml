@@ -1,0 +1,21 @@
+---
+- name: Set the persistent hostname
+  ansible.builtin.hostname:
+    name: "{{ inventory_hostname }}.{{ cluster_domain }}"
+
+- name: Install common administration and validation packages
+  ansible.builtin.dnf:
+    name:
+      - bind-utils
+      - curl
+      - firewalld
+      - nfs-utils
+      - openssl
+      - policycoreutils-python-utils
+    state: present
+
+- name: Enable firewalld
+  ansible.builtin.systemd_service:
+    name: firewalld
+    enabled: true
+    state: started

@@ -1,0 +1,69 @@
+sequenceDiagram
+  actor ADMIN as 管理端末<br/>Windows / WSL2
+  participant VPN as AWS Client VPN<br/>10.81.0.0/22
+  participant DNS as BIND / chrony × 2
+  participant AWSSVC as VPC Resolver /<br/>AWS Time Sync
+  participant NLB as Internal NLB<br/>固定IP × 3
+  participant HA as HAProxy × 2
+  participant NODES as OpenShift Nodes<br/>CP × 3 / Worker × 3
+  participant BOOT as Bootstrap<br/>構築時のみ
+  participant INST as Installer<br/>Apache
+  participant PR as Squid / OCI Registry<br/>10.80.40.31
+  participant NAT as NAT Gateway / IGW<br/>3aの1系統
+  participant EXT as Red Hat / Quay /<br/>Internet
+  participant NFS as NFS-0<br/>10.80.40.41
+
+  rect rgb(221, 235, 247)
+    Note over ADMIN,NLB: 1. 管理アクセス
+    ADMIN->>VPN: Internet UDP 443 / 相互証明書
+    VPN->>DNS: DNS TCP・UDP 53
+    VPN->>NLB: API 6443 / Ingress 80・443
+    VPN->>NODES: SSH TCP 22
+    Note over VPN,NLB: Client VPNからMachine Config TCP 22623は許可しない
+  end
+
+  rect rgb(226, 240, 217)
+    Note over DNS,AWSSVC: 2. DNS / NTP
+    NODES->>DNS: DNS TCP・UDP 53 / NTP UDP 123
+    DNS->>AWSSVC: 外部名は10.80.0.2へforward
+    DNS->>AWSSVC: NTP上流は169.254.169.123
+    Note over VPN,DNS: Client VPN DNSは初期10.80.0.2から基盤完成後BIND × 2へ切り替え
+    Note over DNS: BIND 2台は独立したmaster / zone transferなし
+  end
+
+  rect rgb(252, 228, 214)
+    Note over VPN,NODES: 3. API / Machine Config / Ingress
+    NODES->>NLB: API 6443 / MCS 22623 / Ingress 80・443
+    NLB->>HA: 4 Target Groups / TCP passthrough
+    HA->>NODES: CPへ6443・22623 / Workerへ80・443
+    Note over NLB,HA: NLBとHAProxyではTLSを終端しない
+    opt Bootstrap段階
+      HA-->>BOOT: API 6443 / MCS 22623のbackup backend
+      Note over BOOT: Ingress backendには含めない
+    end
+  end
+
+  rect rgb(255, 242, 204)
+    Note over NODES,INST: 4. Ignition配信 — 構築時限定
+    NODES-->>INST: NLBを介さずHTTP 8080 / SHA-512検証
+    BOOT-->>INST: bootstrap.ignを取得
+    Note over INST: install-complete後にApache停止・配信資材削除
+  end
+
+  rect rgb(244, 204, 204)
+    Note over NODES,EXT: 5. 外部通信 / Proxy / Registry
+    NODES->>PR: install-configのHTTP(S) Proxy TCP 3128
+    PR->>NAT: Proxyから外向き通信
+    NAT->>EXT: Internet Gateway経由
+    NODES-->>NAT: SG / route上は直接egressも可能
+    Note over NODES,PR: OCI Registry TCP 5000は将来のミラー先 / 現行クラスターには未統合
+  end
+
+  rect rgb(235, 235, 235)
+    Note over NODES,NFS: 6. 永続ストレージ
+    NODES->>NFS: Worker / kubeletからNFSv4.1 TCP 2049
+    Note over NODES,NFS: Application Pod → PVC → 非default nfs-rwx → 動的NFS PV<br/>NFS Subdir External Provisionerは1 replica / restricted-v2
+  end
+
+  Note over ADMIN,AWSSVC: Route 53 Public Hosted ZoneはTerraformの参照のみ<br/>ocp.lab.k8study.comの内部レコードはBINDが配信
+  Note over PR,NFS: 構成全体は完全HAではない<br/>NAT、Proxy/Registry、NFSは単一障害点

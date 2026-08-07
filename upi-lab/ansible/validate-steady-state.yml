@@ -1,0 +1,55 @@
+---
+- name: Validate HAProxy after Bootstrap cutover
+  hosts: haproxy
+  become: true
+  gather_facts: false
+  serial: 1
+  tasks:
+    - name: Read the active HAProxy configuration
+      ansible.builtin.slurp:
+        src: /etc/haproxy/haproxy.cfg
+      register: active_haproxy_config
+
+    - name: Require the Bootstrap backend to be absent
+      ansible.builtin.assert:
+        that:
+          - "'server bootstrap ' not in (active_haproxy_config.content | b64decode)"
+
+    - name: Check API through the local HAProxy frontend
+      ansible.builtin.uri:
+        url: https://127.0.0.1:6443/readyz
+        validate_certs: false
+        return_content: false
+        status_code: 200
+        timeout: 10
+      register: local_api_ready
+      until: local_api_ready.status | default(0) == 200
+      retries: 12
+      delay: 5
+
+    - name: Check machine-config service through the local HAProxy frontend
+      ansible.builtin.uri:
+        url: https://127.0.0.1:22623/healthz
+        validate_certs: false
+        return_content: false
+        status_code: 200
+        timeout: 10
+      register: local_machine_config_ready
+      until: local_machine_config_ready.status | default(0) == 200
+      retries: 12
+      delay: 5
+
+- name: Validate DNS after Bootstrap cutover
+  hosts: dns_ntp
+  become: false
+  gather_facts: false
+  tasks:
+    - name: Query the removed Bootstrap A record
+      ansible.builtin.command: dig +short @{{ ansible_host }} bootstrap.ocp.lab.k8study.com A
+      register: bootstrap_dns_result
+      changed_when: false
+
+    - name: Require the Bootstrap A record to be absent
+      ansible.builtin.assert:
+        that:
+          - bootstrap_dns_result.stdout | length == 0

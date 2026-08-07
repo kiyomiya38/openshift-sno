@@ -1,0 +1,27 @@
+[Unit]
+Description=OpenShift UPI Lab Mirror Registry
+After=network-online.target
+Wants=network-online.target
+
+[Container]
+# Docker Official Image registry 2.8.3, pinned to the multi-architecture
+# manifest digest recorded during the distribution review.
+Image={{ registry_image }}
+ContainerName=mirror-registry
+PublishPort=5000:5000
+Volume=/opt/mirror-registry/data:/var/lib/registry:Z
+Volume=/opt/mirror-registry/auth:/auth:Z
+Volume=/opt/mirror-registry/certs:/certs:Z
+Environment=REGISTRY_HTTP_ADDR=0.0.0.0:5000
+Environment=REGISTRY_HTTP_TLS_CERTIFICATE=/certs/registry.crt
+Environment=REGISTRY_HTTP_TLS_KEY=/certs/registry.key
+Environment=REGISTRY_AUTH=htpasswd
+Environment=REGISTRY_AUTH_HTPASSWD_REALM=OpenShift UPI Lab Registry
+Environment=REGISTRY_AUTH_HTPASSWD_PATH=/auth/htpasswd
+
+[Service]
+Restart=always
+TimeoutStartSec=300
+
+[Install]
+WantedBy=multi-user.target

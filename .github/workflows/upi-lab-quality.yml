@@ -1,0 +1,64 @@
+name: UPI lab release quality
+
+on:
+  pull_request:
+    paths:
+      - "upi-lab/**"
+      - "LICENSE"
+      - ".github/workflows/upi-lab-quality.yml"
+  push:
+    paths:
+      - "upi-lab/**"
+      - "LICENSE"
+      - ".github/workflows/upi-lab-quality.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  static-validation:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    steps:
+      - name: Check out source
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+
+      - name: Set up Python
+        uses: actions/setup-python@42375524e23c412d93fb67b49958b491fce71c38 # v5.4.0
+        with:
+          python-version: "3.12"
+
+      - name: Set up Terraform
+        uses: hashicorp/setup-terraform@b9cd54a3c349d3f38e8881555d616ced269862dd # v3.1.2
+        with:
+          terraform_version: "1.15.8"
+          terraform_wrapper: false
+
+      - name: Install pinned validation dependencies
+        shell: bash
+        run: |
+          sudo apt-get update
+          sudo apt-get install --yes shellcheck
+          python -m pip install --disable-pip-version-check ansible-core==2.21.2 ansible-lint==26.6.0
+          ansible-galaxy collection install --force -r upi-lab/ansible/requirements.yml
+
+      - name: Audit release source
+        shell: bash
+        run: bash upi-lab/scripts/91-build-release.sh --audit-only
+
+      - name: Prove a clean release can be staged
+        shell: bash
+        run: bash upi-lab/scripts/91-build-release.sh "$RUNNER_TEMP/upi-lab-release"
+
+      - name: Test release-builder rejection rules
+        shell: bash
+        run: bash upi-lab/scripts/92-test-release-builder.sh
+
+      - name: Initialize Terraform without a backend
+        shell: bash
+        run: terraform -chdir=upi-lab/terraform init -backend=false -input=false -no-color
+
+      - name: Run offline static validation
+        shell: bash
+        run: bash upi-lab/scripts/90-static-validation.sh

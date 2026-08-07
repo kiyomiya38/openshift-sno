@@ -1,0 +1,57 @@
+schema_version: 1
+tested_on: "2026-08-07"
+environment:
+  wsl_distribution: "Ubuntu 24.04"
+  wsl_kernel: "5.15.167.4-microsoft-standard-WSL2"
+tools:
+  aws_cli: "2.36.14"
+  terraform: "1.15.8"
+  ansible_core: "2.21.2"
+  ansible_lint: "26.6.0"
+  python_for_ansible: "3.12.3"
+  oc: "4.21.26"
+  openshift_install: "4.21.26"
+  jq: "1.7"
+  git: "2.43.0"
+  openssl: "3.0.13"
+documentation_tools:
+  nodejs: "24.12.0"
+  mermaid_cli: "11.16.0"
+terraform_providers:
+  hashicorp_aws: "6.57.1"
+ansible_collections:
+  ansible_posix: "2.2.2"
+  community_general: "13.2.0"
+openshift:
+  version: "4.21.26"
+  architecture: "amd64"
+  release_image_digest: "sha256:f2cd6a3878eade92951168bd9491cc4828f02e41e41c4d7fad8d7c7948156304"
+supply_chain:
+  easy_rsa:
+    version: "3.2.6"
+    commit: "0d746eec3f06210ae1710d17b9c8d38428058e19"
+  container_images:
+    registry:
+      reference: "docker.io/library/registry:2.8.3"
+      digest: "sha256:a3d8aaa63ed8681a604f1dea0aa03f100d5895b6a58ace528858a7b332415373"
+    nfs_subdir_external_provisioner:
+      manifest_baseline: "nfs-subdir-external-provisioner-4.0.18"
+      application_version: "4.0.2"
+      reference: "registry.k8s.io/sig-storage/nfs-subdir-external-provisioner"
+      digest: "sha256:374f80dde8bbd498b1083348dd076b8d8d9f9b35386a793f102d5deebe593626"
+    ubi_minimal_test:
+      reference: "registry.access.redhat.com/ubi9/ubi-minimal"
+      digest: "sha256:d1bad2a2790eac1651e57e78159a81b72ddfa7b836936b26cf51e09744bf1c2d"
+aws_amis:
+  rhel_infrastructure:
+    id: "ami-00398bf75d34bf700"
+    owner: "309956199498"
+    name: "RHEL-9.6.0_HVM-20260630-x86_64-0-Hourly2-GP3"
+    region: "ap-northeast-3"
+    selection: "pinned input"
+  rhcos_e2e_observed:
+    id: "ami-0aece3afd09f87c4d"
+    owner: "531415883065"
+    name: "rhcos-9.6.20260616-0-x86_64"
+    region: "ap-northeast-3"
+    selection: "installer-selected at runtime; this ID records the E2E-tested build"

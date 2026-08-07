@@ -1,0 +1,202 @@
+---
+- name: Validate service process state
+  hosts: all
+  become: true
+  gather_facts: false
+  tasks:
+    - name: Read active state for required services # noqa command-instead-of-module
+      ansible.builtin.command: "systemctl is-active {{ item }}"
+      loop: "{{ required_services }}"
+      register: required_service_active
+      changed_when: false
+      failed_when: false
+      vars:
+        required_services: >-
+          {{
+            ['named.service', 'chronyd.service'] if inventory_hostname in groups['dns_ntp'] else
+            ['haproxy.service'] if inventory_hostname in groups['haproxy'] else
+            ['squid.service', 'mirror-registry.service'] if inventory_hostname in groups['proxy_registry'] else
+            ['nfs-server.service'] if inventory_hostname in groups['nfs'] else
+            []
+          }}
+
+    - name: Verify required services are active
+      ansible.builtin.assert:
+        that:
+          - item.rc == 0
+          - item.stdout == 'active'
+        fail_msg: "{{ item.item }} is not active on {{ inventory_hostname }}"
+      loop: "{{ required_service_active.results }}"
+      loop_control:
+        label: "{{ item.item }}"
+
+    - name: Read enablement state for required services # noqa command-instead-of-module
+      ansible.builtin.command: "systemctl is-enabled {{ item }}"
+      loop: "{{ required_services }}"
+      register: required_service_enabled
+      changed_when: false
+      failed_when: false
+      vars:
+        required_services: >-
+          {{
+            ['named.service', 'chronyd.service'] if inventory_hostname in groups['dns_ntp'] else
+            ['haproxy.service'] if inventory_hostname in groups['haproxy'] else
+            ['squid.service', 'mirror-registry.service'] if inventory_hostname in groups['proxy_registry'] else
+            ['nfs-server.service'] if inventory_hostname in groups['nfs'] else
+            []
+          }}
+
+    - name: Verify required services start automatically
+      ansible.builtin.assert:
+        that:
+          - item.stdout in ['enabled', 'generated', 'static', 'indirect']
+        fail_msg: "{{ item.item }} does not start automatically on {{ inventory_hostname }}: {{ item.stdout }}"
+      loop: "{{ required_service_enabled.results }}"
+      loop_control:
+        label: "{{ item.item }}"
+
+- name: Validate services from the Installer host
+  hosts: installer
+  gather_facts: false
+  vars:
+    expected_api_addresses:
+      - 10.80.10.5
+      - 10.80.20.5
+      - 10.80.30.5
+  tasks:
+    - name: Query API records from both DNS servers
+      ansible.builtin.command: "dig +short @{{ item }} api.{{ cluster_domain }} A"
+      loop: "{{ dns_servers }}"
+      register: api_dns_results
+      changed_when: false
+
+    - name: Verify each DNS server returns all NLB addresses
+      ansible.builtin.assert:
+        that:
+          - (item.stdout_lines | sort) == (expected_api_addresses | sort)
+      loop: "{{ api_dns_results.results }}"
+      loop_control:
+        label: "{{ item.item }}"
+
+    - name: Query a reverse record from both DNS servers
+      ansible.builtin.command: "dig +short @{{ item }} -x 10.80.10.10"
+      loop: "{{ dns_servers }}"
+      register: reverse_dns_results
+      changed_when: false
+
+    - name: Verify the control plane reverse record
+      ansible.builtin.assert:
+        that:
+          - item.stdout == 'control-plane-0.' + cluster_domain + '.'
+      loop: "{{ reverse_dns_results.results }}"
+      loop_control:
+        label: "{{ item.item }}"
+
+    - name: Check both HAProxy health endpoints
+      ansible.builtin.uri:
+        url: "http://{{ item }}:1936/healthz/ready"
+        status_code: 200
+      loop:
+        - 10.80.40.21
+        - 10.80.50.21
+
+    - name: Query the registry record from both DNS servers
+      ansible.builtin.command: "dig +short @{{ item }} {{ registry_fqdn }} A"
+      loop: "{{ dns_servers }}"
+      register: registry_dns_results
+      changed_when: false
+
+    - name: Verify both DNS servers return the registry address
+      ansible.builtin.assert:
+        that:
+          - item.stdout == '10.80.40.31'
+      loop: "{{ registry_dns_results.results }}"
+      loop_control:
+        label: "{{ item.item }}"
+
+    - name: Check the registry API with authentication
+      ansible.builtin.uri:
+        url: "https://10.80.40.31:5000/v2/"
+        user: "{{ registry_username }}"
+        password: "{{ registry_password }}"
+        force_basic_auth: true
+        validate_certs: false
+        status_code: 200
+      no_log: true
+
+    - name: Wait for the NFSv4 service port
+      ansible.builtin.wait_for:
+        host: 10.80.40.41
+        port: 2049
+        connect_timeout: 3
+        timeout: 15
+
+    - name: Create a temporary NFSv4 validation mount point
+      become: true
+      ansible.builtin.tempfile:
+        state: directory
+        prefix: openshift-nfs-validation.
+      register: nfs_validation_mount
+      changed_when: false
+
+    - name: Validate NFSv4 read-write access
+      become: true
+      block:
+        - name: Mount the OpenShift export with NFSv4.1
+          ansible.posix.mount:
+            src: "10.80.40.41:{{ nfs_export_path }}"
+            path: "{{ nfs_validation_mount.path }}"
+            fstype: nfs
+            opts: rw,vers=4.1,proto=tcp,nosuid,nodev,noexec
+            state: ephemeral
+          changed_when: false
+
+        - name: Write an NFS validation marker
+          ansible.builtin.copy:
+            content: "openshift-upi-lab-nfs-validation\n"
+            dest: "{{ nfs_validation_mount.path }}/.openshift-upi-lab-validation"
+            mode: "0600"
+          changed_when: false
+
+        - name: Read the NFS validation marker
+          ansible.builtin.slurp:
+            src: "{{ nfs_validation_mount.path }}/.openshift-upi-lab-validation"
+          register: nfs_validation_marker
+
+        - name: Verify the NFS validation marker contents
+          ansible.builtin.assert:
+            that:
+              - (nfs_validation_marker.content | b64decode | trim) == 'openshift-upi-lab-nfs-validation'
+      always:
+        - name: Remove the NFS validation marker
+          ansible.builtin.file:
+            path: "{{ nfs_validation_mount.path }}/.openshift-upi-lab-validation"
+            state: absent
+          changed_when: false
+
+        - name: Unmount the temporary NFSv4 mount
+          ansible.posix.mount:
+            path: "{{ nfs_validation_mount.path }}"
+            state: unmounted
+          changed_when: false
+
+        - name: Remove the temporary NFSv4 mount point
+          ansible.builtin.file:
+            path: "{{ nfs_validation_mount.path }}"
+            state: absent
+          changed_when: false
+
+- name: Validate time synchronization
+  hosts: dns_ntp
+  become: true
+  gather_facts: false
+  tasks:
+    - name: Read chrony tracking state
+      ansible.builtin.command: chronyc tracking
+      register: chrony_tracking
+      changed_when: false
+
+    - name: Verify chrony is synchronized
+      ansible.builtin.assert:
+        that:
+          - "'Leap status     : Normal' in chrony_tracking.stdout"

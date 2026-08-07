@@ -1,0 +1,22 @@
+---
+- name: Stop serving cluster-specific Ignition after installation
+  hosts: installer
+  become: true
+  gather_facts: false
+  tasks:
+    - name: Validate the cluster infrastructure ID
+      ansible.builtin.assert:
+        that:
+          - ignition_infra_id is defined
+          - ignition_infra_id is match('^[a-z0-9-]+$')
+
+    - name: Stop and disable Apache
+      ansible.builtin.systemd_service:
+        name: httpd
+        state: stopped
+        enabled: false
+
+    - name: Remove the served cluster-specific Ignition directory
+      ansible.builtin.file:
+        path: "/var/www/html/openshift-upi-lab/{{ ignition_infra_id }}"
+        state: absent

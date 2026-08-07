@@ -1,0 +1,82 @@
+flowchart LR
+  ADMIN["管理端末<br/>Windows 11 + WSL2<br/>AWS VPN Client"]:::external
+  INTERNET["Internet<br/>Red Hat / Quay / AWS API"]:::external
+  R53["Route 53 Public Hosted Zone<br/>lab.k8study.com<br/>参照のみ"]:::reference
+
+  subgraph AWS["AWS ap-northeast-3"]
+    VPN["AWS Client VPN<br/>10.81.0.0/22<br/>相互証明書 / Split tunnel<br/>Infra-a・Infra-bへ関連付け"]:::aws
+    CW["CloudWatch Logs<br/>VPN接続ログ 30日"]:::aws
+
+    subgraph VPC["VPC 10.80.0.0/16 — 全EC2 Public IPv4なし"]
+      DNS["BIND + chrony × 2<br/>10.80.40.11 / 10.80.50.11<br/>権威・キャッシュDNS / NTP"]:::infra
+      INSTALLER["Installer / Ansible / Apache<br/>10.80.40.10<br/>Ignition HTTP 8080は構築時のみ"]:::infra
+
+      NLB["Internal NLB<br/>10.80.10.5 / 10.80.20.5 / 10.80.30.5<br/>TCP 6443 / 22623 / 80 / 443<br/>Cross-zone"]:::aws
+      HA0["HAProxy-0<br/>10.80.40.21"]:::infra
+      HA1["HAProxy-1<br/>10.80.50.21"]:::infra
+
+      CP["Control Plane × 3<br/>10.80.10.10 / 10.80.20.10 / 10.80.30.10"]:::cluster
+      WORKERS["Worker × 3<br/>10.80.10.20 / 10.80.20.20 / 10.80.30.20"]:::cluster
+      BOOT["Bootstrap<br/>10.80.10.30<br/>API / MCSの予備backend<br/>インストール後に削除"]:::temporary
+
+      subgraph PRHOST["Proxy / Registry EC2 — 10.80.40.31 — 単一障害点"]
+        SQUID["Squid<br/>TCP 3128"]:::single
+        REGISTRY["OCI Registry<br/>HTTPS 5000<br/>将来のミラー先・未統合"]:::single
+      end
+
+      NFS["NFS-0 — 単一障害点<br/>10.80.40.41:2049<br/>/srv/nfs/openshift"]:::single
+      NAT["NAT Gateway — 単一障害点<br/>Public-a / Elastic IP"]:::single
+      IGW["Internet Gateway"]:::aws
+      RESOLVER["VPC Resolver<br/>10.80.0.2"]:::aws
+      TIME["AWS Time Sync<br/>169.254.169.123"]:::aws
+    end
+  end
+
+  ADMIN -->|"Internet経由 UDP 443"| VPN
+  VPN -.->|"接続ログ"| CW
+  ADMIN -.->|"Terraform / preflightで存在確認"| R53
+
+  VPN -->|"API 6443 / Ingress 80・443"| NLB
+  VPN -->|"DNS TCP・UDP 53"| DNS
+  VPN -->|"SSH 22"| INSTALLER
+  VPN -->|"SSH 22"| CP
+  VPN -->|"SSH 22"| WORKERS
+
+  DNS -.->|"api / api-int / *.apps → NLB固定IP"| NLB
+  DNS -->|"外部名のforward"| RESOLVER
+  DNS -->|"NTP上流"| TIME
+
+  NLB -->|"TCPパススルー"| HA0
+  NLB -->|"TCPパススルー"| HA1
+  HA0 -->|"API 6443 / MCS 22623"| CP
+  HA1 -->|"API 6443 / MCS 22623"| CP
+  HA0 -->|"Ingress 80 / 443"| WORKERS
+  HA1 -->|"Ingress 80 / 443"| WORKERS
+  HA0 -.->|"構築時のみ / backup"| BOOT
+  HA1 -.->|"構築時のみ / backup"| BOOT
+
+  CP -->|"DNS 53 / NTP 123"| DNS
+  WORKERS -->|"DNS 53 / NTP 123"| DNS
+  BOOT -.->|"DNS 53 / NTP 123"| DNS
+  CP -.->|"Ignition取得 HTTP 8080"| INSTALLER
+  WORKERS -.->|"Ignition取得 HTTP 8080"| INSTALLER
+  BOOT -.->|"Ignition取得 HTTP 8080"| INSTALLER
+
+  CP -->|"install-configのHTTP(S) Proxy"| SQUID
+  WORKERS -->|"install-configのHTTP(S) Proxy"| SQUID
+  BOOT -.->|"構築時のHTTP(S) Proxy"| SQUID
+  SQUID --> NAT
+  CP -.->|"直接egressも許可"| NAT
+  WORKERS -.->|"直接egressも許可"| NAT
+  NAT --> IGW --> INTERNET
+  CP -.->|"ミラー設定は未実装"| REGISTRY
+  WORKERS -.->|"ミラー設定は未実装"| REGISTRY
+  WORKERS -->|"NFSv4.1 TCP 2049"| NFS
+
+  classDef external fill:#F7F7F7,stroke:#333333,stroke-width:2px,color:#111111;
+  classDef reference fill:#FFFFFF,stroke:#666666,stroke-width:2px,stroke-dasharray:5 4,color:#111111;
+  classDef aws fill:#DDEBF7,stroke:#315A7D,stroke-width:2px,color:#111111;
+  classDef infra fill:#E2F0D9,stroke:#4F6F3E,stroke-width:2px,color:#111111;
+  classDef cluster fill:#FCE4D6,stroke:#8A4F2D,stroke-width:2px,color:#111111;
+  classDef temporary fill:#FFF2CC,stroke:#7F6000,stroke-width:2px,stroke-dasharray:7 4,color:#111111;
+  classDef single fill:#F4CCCC,stroke:#7A2E2E,stroke-width:3px,color:#111111;

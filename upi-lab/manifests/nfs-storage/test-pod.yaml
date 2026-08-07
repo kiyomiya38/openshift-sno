@@ -1,0 +1,48 @@
+apiVersion: v1
+kind: Pod
+metadata:
+  name: nfs-persistence-test
+  namespace: nfs-storage-test
+  annotations:
+    openshift.io/required-scc: restricted-v2
+  labels:
+    app.kubernetes.io/name: nfs-persistence-test
+    app.kubernetes.io/part-of: openshift-upi-lab
+spec:
+  automountServiceAccountToken: false
+  restartPolicy: Never
+  terminationGracePeriodSeconds: 5
+  nodeSelector:
+    node-role.kubernetes.io/worker: ""
+  securityContext:
+    seccompProfile:
+      type: RuntimeDefault
+  containers:
+    - name: test
+      image: registry.access.redhat.com/ubi9/ubi-minimal@sha256:d1bad2a2790eac1651e57e78159a81b72ddfa7b836936b26cf51e09744bf1c2d
+      imagePullPolicy: IfNotPresent
+      command:
+        - /bin/sh
+        - -c
+        - trap 'exit 0' TERM INT; sleep 3600 & wait
+      securityContext:
+        allowPrivilegeEscalation: false
+        capabilities:
+          drop:
+            - ALL
+        readOnlyRootFilesystem: true
+        runAsNonRoot: true
+      resources:
+        requests:
+          cpu: 10m
+          memory: 32Mi
+        limits:
+          cpu: 100m
+          memory: 128Mi
+      volumeMounts:
+        - name: data
+          mountPath: /data
+  volumes:
+    - name: data
+      persistentVolumeClaim:
+        claimName: nfs-persistence

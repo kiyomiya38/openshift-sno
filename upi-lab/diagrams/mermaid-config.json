@@ -1,0 +1,21 @@
+{
+  "theme": "base",
+  "look": "classic",
+  "flowchart": {
+    "curve": "linear",
+    "htmlLabels": true,
+    "nodeSpacing": 36,
+    "rankSpacing": 52,
+    "padding": 14,
+    "useMaxWidth": false
+  },
+  "themeVariables": {
+    "fontFamily": "Arial, Yu Gothic UI, Noto Sans JP, sans-serif",
+    "fontSize": "18px",
+    "primaryTextColor": "#111111",
+    "lineColor": "#333333",
+    "clusterBkg": "#FAFAFA",
+    "clusterBorder": "#666666",
+    "edgeLabelBackground": "#FFFFFF"
+  }
+}

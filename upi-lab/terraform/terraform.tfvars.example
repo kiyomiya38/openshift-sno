@@ -1,0 +1,26 @@
+# Do not commit a real account ID if this repository will be public.
+expected_account_id = "123456789012"
+
+aws_profile = "openshift-lab"
+aws_region  = "ap-northeast-3"
+owner_tag   = "your-team-or-name"
+base_domain = "lab.k8study.com"
+vpc_cidr    = "10.80.0.0/16"
+
+# Enable only after scripts/02 and scripts/03 have completed.
+enable_client_vpn               = false
+client_vpn_server_certificate_arn = null
+
+# Enable only after Client VPN connectivity has been verified.
+enable_infrastructure_services = false
+ssh_public_key_path            = "~/.ssh/openshift_upi_lab.pub"
+# Reviewed RHEL 9.6 image for this release/profile. Update only through a
+# documented release validation.
+rhel_ami_id = "ami-00398bf75d34bf700"
+
+# Phase 6. Set through the provided scripts; do not paste full Ignition content here.
+enable_cluster_prerequisites = false
+enable_cluster_nodes         = false
+enable_bootstrap             = false
+rhcos_ami_id                 = null
+ignition_base_url            = null

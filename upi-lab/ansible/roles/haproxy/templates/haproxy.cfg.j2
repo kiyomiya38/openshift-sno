@@ -1,0 +1,79 @@
+global
+    log         127.0.0.1 local2
+    chroot      /var/lib/haproxy
+    pidfile     /var/run/haproxy.pid
+    maxconn     4000
+    user        haproxy
+    group       haproxy
+    daemon
+    stats socket /var/lib/haproxy/stats mode 660 level admin
+
+defaults
+    mode                    tcp
+    log                     global
+    option                  tcplog
+    option                  dontlognull
+    option                  redispatch
+    retries                 3
+    timeout connect         10s
+    timeout client          1m
+    timeout server          1m
+    timeout check           10s
+    maxconn                 3000
+
+listen health
+    bind *:1936
+    mode http
+    monitor-uri /healthz/ready
+
+frontend openshift_api
+    bind *:6443
+    default_backend openshift_api
+
+backend openshift_api
+    balance roundrobin
+    option httpchk GET /readyz HTTP/1.0
+    http-check expect status 200
+{% if cluster_stage == 'bootstrap' %}
+    server bootstrap 10.80.10.30:6443 check check-ssl verify none inter 10s fall 2 rise 3 backup
+{% endif %}
+    server control-plane-0 10.80.10.10:6443 check check-ssl verify none inter 10s fall 2 rise 3
+    server control-plane-1 10.80.20.10:6443 check check-ssl verify none inter 10s fall 2 rise 3
+    server control-plane-2 10.80.30.10:6443 check check-ssl verify none inter 10s fall 2 rise 3
+
+frontend machine_config
+    bind *:22623
+    default_backend machine_config
+
+backend machine_config
+    balance roundrobin
+    option httpchk GET /healthz HTTP/1.0
+    http-check expect status 200
+{% if cluster_stage == 'bootstrap' %}
+    server bootstrap 10.80.10.30:22623 check check-ssl verify none inter 10s fall 2 rise 3 backup
+{% endif %}
+    server control-plane-0 10.80.10.10:22623 check check-ssl verify none inter 10s fall 2 rise 3
+    server control-plane-1 10.80.20.10:22623 check check-ssl verify none inter 10s fall 2 rise 3
+    server control-plane-2 10.80.30.10:22623 check check-ssl verify none inter 10s fall 2 rise 3
+
+frontend ingress_http
+    bind *:80
+    default_backend ingress_http
+
+backend ingress_http
+    balance source
+    option tcp-check
+    server worker-0 10.80.10.20:80 check inter 10s fall 2 rise 3
+    server worker-1 10.80.20.20:80 check inter 10s fall 2 rise 3
+    server worker-2 10.80.30.20:80 check inter 10s fall 2 rise 3
+
+frontend ingress_https
+    bind *:443
+    default_backend ingress_https
+
+backend ingress_https
+    balance source
+    option tcp-check
+    server worker-0 10.80.10.20:443 check inter 10s fall 2 rise 3
+    server worker-1 10.80.20.20:443 check inter 10s fall 2 rise 3
+    server worker-2 10.80.30.20:443 check inter 10s fall 2 rise 3

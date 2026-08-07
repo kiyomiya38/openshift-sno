@@ -1,0 +1,30 @@
+$TTL 300
+@ IN SOA dns-ntp-0.{{ cluster_domain }}. hostmaster.{{ cluster_domain }}. (
+    {{ dns_zone_serial }} 300 60 86400 300 )
+  IN NS dns-ntp-0.{{ cluster_domain }}.
+  IN NS dns-ntp-1.{{ cluster_domain }}.
+
+10.40 IN PTR installer.{{ cluster_domain }}.
+11.40 IN PTR dns-ntp-0.{{ cluster_domain }}.
+21.40 IN PTR haproxy-0.{{ cluster_domain }}.
+31.40 IN PTR mirror-registry.{{ cluster_domain }}.
+41.40 IN PTR nfs-0.{{ cluster_domain }}.
+11.50 IN PTR dns-ntp-1.{{ cluster_domain }}.
+21.50 IN PTR haproxy-1.{{ cluster_domain }}.
+
+5.10 IN PTR api.{{ cluster_domain }}.
+5.10 IN PTR api-int.{{ cluster_domain }}.
+5.20 IN PTR api.{{ cluster_domain }}.
+5.20 IN PTR api-int.{{ cluster_domain }}.
+5.30 IN PTR api.{{ cluster_domain }}.
+5.30 IN PTR api-int.{{ cluster_domain }}.
+
+{% if cluster_stage == 'bootstrap' %}
+30.10 IN PTR bootstrap.{{ cluster_domain }}.
+{% endif %}
+10.10 IN PTR control-plane-0.{{ cluster_domain }}.
+10.20 IN PTR control-plane-1.{{ cluster_domain }}.
+10.30 IN PTR control-plane-2.{{ cluster_domain }}.
+20.10 IN PTR worker-0.{{ cluster_domain }}.
+20.20 IN PTR worker-1.{{ cluster_domain }}.
+20.30 IN PTR worker-2.{{ cluster_domain }}.

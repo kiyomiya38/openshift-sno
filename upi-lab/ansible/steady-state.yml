@@ -1,0 +1,18 @@
+---
+- name: Remove Bootstrap from HAProxy one host at a time
+  hosts: haproxy
+  become: true
+  serial: 1
+  vars:
+    cluster_stage: steady
+  roles:
+    - haproxy
+
+- name: Remove the Bootstrap DNS records one server at a time
+  hosts: dns_ntp
+  become: true
+  serial: 1
+  vars:
+    cluster_stage: steady
+  roles:
+    - dns_ntp

@@ -1,0 +1,21 @@
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: nfs-storage-test
+  labels:
+    app.kubernetes.io/part-of: openshift-upi-lab
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: nfs-persistence
+  namespace: nfs-storage-test
+  labels:
+    app.kubernetes.io/part-of: openshift-upi-lab
+spec:
+  accessModes:
+    - ReadWriteMany
+  storageClassName: nfs-rwx
+  resources:
+    requests:
+      storage: 1Gi
