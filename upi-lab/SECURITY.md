@@ -17,16 +17,16 @@ Never distribute or commit Terraform state or plans, `.terraform/`, logs,
 files. Before creating a release, run:
 
 ```bash
-bash scripts/90-static-validation.sh
+bash scripts/91-static-validation.sh
 bash scripts/92-test-release-builder.sh
-bash scripts/91-build-release.sh --audit-only
+bash scripts/93-build-release.sh --audit-only
 ```
 
 The release builder stops when these artifacts or concrete personal paths are
 present. It stages only an allowlisted set of source files and never deletes
 or overwrites the source tree.
 
-Distribute only the archive produced by `scripts/91-build-release.sh`. Do not
+Distribute only the archive produced by `scripts/93-build-release.sh`. Do not
 ZIP, copy, or publish the working tree, because ignored local files still exist
 on disk and can be included by tools that do not honor `.gitignore`.
 
@@ -47,7 +47,7 @@ If a sensitive artifact is published:
    CI, cache, and mirror storage. A deletion commit alone does not remove it
    from history.
 5. Re-run cleanup validation, secret scanning, and
-   `scripts/91-build-release.sh --audit-only` before republishing.
+   `scripts/93-build-release.sh --audit-only` before republishing.
 6. Record the exposure window, affected identities, rotations, and validation
    evidence without recording the secret values themselves.
 

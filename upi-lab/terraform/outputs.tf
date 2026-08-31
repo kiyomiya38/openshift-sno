@@ -47,7 +47,7 @@ output "client_vpn_security_group_id" {
 }
 
 output "infrastructure_ami" {
-  description = "Official RHEL AMI selected for Phase 4 infrastructure hosts."
+  description = "Official RHEL AMI selected for chapter 05 infrastructure hosts."
   value = var.enable_infrastructure_services ? {
     id   = data.aws_ami.rhel_infrastructure[0].id
     name = data.aws_ami.rhel_infrastructure[0].name

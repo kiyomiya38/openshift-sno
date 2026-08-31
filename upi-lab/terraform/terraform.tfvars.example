@@ -7,7 +7,8 @@ owner_tag   = "your-team-or-name"
 base_domain = "lab.k8study.com"
 vpc_cidr    = "10.80.0.0/16"
 
-# Enable only after scripts/02 and scripts/03 have completed.
+# Enable only after scripts/04-01-generate-client-vpn-pki.sh and
+# scripts/04-02-import-client-vpn-certificate.sh have completed.
 enable_client_vpn               = false
 client_vpn_server_certificate_arn = null
 
@@ -18,7 +19,7 @@ ssh_public_key_path            = "~/.ssh/openshift_upi_lab.pub"
 # documented release validation.
 rhel_ami_id = "ami-00398bf75d34bf700"
 
-# Phase 6. Set through the provided scripts; do not paste full Ignition content here.
+# Chapter 06. Set through the provided scripts; do not paste full Ignition content here.
 enable_cluster_prerequisites = false
 enable_cluster_nodes         = false
 enable_bootstrap             = false

@@ -24,46 +24,108 @@ wsl --install -d Ubuntu-24.04
 Ubuntuを開きます。
 
 ```powershell
-wsl -d '<wsl --list --verboseで表示されたUbuntu名>'
+$UbuntuName = Read-Host 'Ubuntu name shown by wsl --list --verbose'
+if ([string]::IsNullOrWhiteSpace($UbuntuName)) {
+  throw 'Ubuntu name must not be empty.'
+}
+wsl -d $UbuntuName
 ```
 
-以降は、特記がなければWSL Ubuntuで実行します。配布archiveを受け取った場合は同梱SHA-256を照合して展開します。Gitから取得する場合は、組織が指定する信頼済みURLとrelease/tagを使用します。作業中ディレクトリのコピーや、他人のTerraform state入りフォルダーを受け取りません。
+入力待ちでは、直前の一覧に表示された名前を入力します。この環境の表示が`Ubuntu`なら`Ubuntu`と入力します。`<...>`のようなプレースホルダーをコマンドとして入力しません。
+
+以降は、特記がなければWSL Ubuntuで実行します。
+
+この文書をローカルの`openshift-sno/upi-lab/docs`から開いている時点で、リポジトリの取得は完了しています。**archiveの展開や`git clone`を実行しません。** 配布archiveをまだ展開していない利用者は、この文書を開始する前に、配布元から別途提示された取得手順でSHA-256照合と展開を完了してください。プレースホルダーのURLやrelease tagを推測して実行しません。作業中ディレクトリのコピーや、他人のTerraform state入りフォルダーも使用しません。
+
+現在の`upi-lab`を`LAB_ROOT`へ登録します。次のコード全体を貼り付けます。現在位置がリポジトリ直下の`openshift-sno`でも、`upi-lab`へ自動では移動しないため、入力待ちで`upi-lab`まで含む絶対パスを指定します。
 
 ```bash
-# release archiveの例
-sha256sum -c openshift-upi-lab-source.tar.gz.sha256
-tar -xzf openshift-upi-lab-source.tar.gz
-cd openshift-upi-lab
+unset LAB_ROOT
+LAB_ROOT_FILE="$HOME/.config/openshift-upi-lab/lab-root"
+read -r -e -p 'UPI lab path in WSL: ' UPI_LAB_PATH
 
-# または、信頼済みURLの指定releaseをcloneする例
-# git clone --branch '<release-tag>' --depth 1 '<repository-url>' openshift-sno
-# cd openshift-sno/upi-lab
+if [[ ! -d "$UPI_LAB_PATH" ]]; then
+  echo "ERROR: Directory not found: $UPI_LAB_PATH" >&2
+elif [[ ! -f "$UPI_LAB_PATH/README.md" || \
+        ! -d "$UPI_LAB_PATH/docs" || \
+        ! -d "$UPI_LAB_PATH/terraform" || \
+        ! -x "$UPI_LAB_PATH/scripts/02-03-preflight.sh" ]]; then
+  echo "ERROR: Not the OpenShift UPI lab root: $UPI_LAB_PATH" >&2
+else
+  cd "$UPI_LAB_PATH"
+  export LAB_ROOT="$PWD"
+  install -d -m 700 "$(dirname "$LAB_ROOT_FILE")"
+  printf '%s\n' "$LAB_ROOT" > "$LAB_ROOT_FILE"
+  chmod 600 "$LAB_ROOT_FILE"
+  printf 'LAB_ROOT=%s\n' "$LAB_ROOT"
+  printf 'Saved path=%s\n' "$LAB_ROOT_FILE"
+  uname -s
+  uname -m
+  echo 'PASS: OpenShift UPI lab root was set.'
+fi
+
+unset LAB_ROOT_FILE UPI_LAB_PATH
 ```
 
-現在の`upi-lab`を`LAB_ROOT`へ登録します。
+コードを貼り付けると`UPI lab path in WSL:`で入力待ちになります。本書の構築例では、次のように入力します。
+
+```text
+UPI lab path in WSL: /mnt/c/Users/<Windowsユーザー>/openshift-sno/upi-lab
+```
+
+`<Windowsユーザー>`を使用しているWindowsアカウント名へ置き換えます。正常時は`LAB_ROOT`の末尾が`/upi-lab`となり、`Linux`、`x86_64`、`PASS: OpenShift UPI lab root was set.`が表示されます。`ERROR`が表示された場合や、`LAB_ROOT`の末尾が`/openshift-sno`だけの場合は先へ進みません。
+
+`LAB_ROOT`環境変数はWSLシェルを閉じると失われます。そのため、検証済みパスを`~/.config/openshift-upi-lab/lab-root`へ権限`600`で保存します。03章以降は各章の最初にこの値を読み戻します。リポジトリを移動した場合は、この手順を再実行して保存先を更新します。
+
+## 2. AWS CLI v2を確認し、プロファイルを設定する
+
+最初に共通パッケージを導入します。すでに導入済みのパッケージは更新対象にならないため、重複してインストールされません。
 
 ```bash
-export LAB_ROOT="$PWD"
-uname -s
-uname -m
-test -x "$LAB_ROOT/scripts/00-preflight.sh"
+sudo apt-get update
+sudo apt-get install -y \
+  ca-certificates curl unzip gnupg wget \
+  jq git openssl openssh-client dnsutils pipx
 ```
 
-期待値は `Linux` と `x86_64` です。
+AWS CLIの導入状態を確認します。
 
-## 2. AWS CLIプロファイルを設定する
+```bash
+if command -v aws >/dev/null 2>&1; then
+  aws --version
+else
+  echo 'ERROR: AWS CLI v2 is not installed.' >&2
+fi
+```
+
+`aws-cli/2.`から始まるバージョンが表示された場合、AWS CLI v2は導入済みです。次の「AWS CLI v2が未導入の場合」へ進まず、ラボ専用IAM principalの設定へ進みます。
+
+### AWS CLI v2が未導入の場合
+
+前の確認で`ERROR: AWS CLI v2 is not installed.`が表示された場合だけ、この章をいったん停止します。[AWS公式Linuxインストール手順](https://docs.aws.amazon.com/cli/latest/userguide/getting-started-install.html)と[公式の署名検証手順](https://docs.aws.amazon.com/cli/latest/userguide/getting-started-install.html#install-linux-verify-signature)に従い、公開鍵、signature、archiveを検証してAWS CLI v2を導入します。署名鍵を省略した未検証archiveは実行しません。
+
+導入後、この章の「AWS CLIの導入状態を確認します」へ戻り、`aws-cli/2.`から始まることを確認します。AWS CLI v1が表示された場合は使用しません。
+
+### ラボ用プロファイルを設定する
 
 ラボ専用IAM principalの認証情報をAWSコンソールで準備します。現在の実装はAWS CLI profileに保存された長期access keyで検証しています。ルートユーザーのaccess keyは使用しません。access keyはチャット、Markdown、Git、シェル履歴へ貼り付けません。
 
 作業責任者から、使用を承認された12桁のAWS Account IDを**AWSへのログインとは別の経路**で受け取ります。現在ログインしているAccount IDをそのまま期待値として採用すると、最初から誤ったアカウントへ接続している場合を検出できません。
 
-実行場所: WSL Ubuntu
+実行場所: WSL Ubuntu。既存profileが正しい場合は再設定せず再利用し、未設定・認証失敗・region不一致の場合だけ`aws configure`を開始します。
 
 ```bash
-aws configure --profile openshift-lab
+if aws sts get-caller-identity \
+     --profile openshift-lab >/dev/null 2>&1 && \
+   [[ "$(aws configure get region --profile openshift-lab)" == 'ap-northeast-3' ]]; then
+  echo 'PASS: Existing openshift-lab profile was retained.'
+else
+  echo 'The openshift-lab profile must be configured.'
+  aws configure --profile openshift-lab
+fi
 ```
 
-対話入力は次のとおりです。
+`aws configure`が開始された場合だけ、次を対話入力します。`PASS: Existing openshift-lab profile was retained.`と表示された場合は入力しません。
 
 ```text
 AWS Access Key ID: 対話入力
@@ -79,25 +141,16 @@ aws sts get-caller-identity --profile openshift-lab
 aws configure get region --profile openshift-lab
 ```
 
-承認済み値を設定し、ログイン先と照合します。実際のIDを手順書へ書き込みません。
-
-```bash
-export EXPECTED_AWS_ACCOUNT_ID='<承認済みの12桁Account ID>'
-CURRENT_AWS_ACCOUNT_ID="$(aws sts get-caller-identity \
-  --profile openshift-lab --query Account --output text)"
-
-test "$CURRENT_AWS_ACCOUNT_ID" = "$EXPECTED_AWS_ACCOUNT_ID"
-test "$(aws configure get region --profile openshift-lab)" = 'ap-northeast-3'
-```
-
-いずれかが失敗した場合は中止し、profileを修正します。`EXPECTED_AWS_ACCOUNT_ID`は新しいWSLシェルで再設定します。Account IDとIAM ARNを公開ログへ掲載しません。
-
-照合に成功した値を、リポジトリ外のaccount guardへ登録します。
+承認済み値をログイン先と照合し、account guardへ登録します。登録スクリプトが必要な入力と検査を行うため、環境変数の手動設定や長い条件分岐は不要です。入力する値は現在のAWS sessionから初めて知った値ではなく、作業責任者が事前承認したAccount IDです。
 
 ```bash
 cd "$LAB_ROOT"
-bash scripts/00-register-expected-account.sh
+bash scripts/02-01-register-expected-account.sh
 ```
+
+`Approved 12-digit AWS Account ID (not an AKIA/ASIA access key):`で入力待ちになったら、承認済みの12桁だけを入力してEnterを押します。`123456789012`のような12桁がAccount IDです。`AKIA`または`ASIA`から始まる英数字はAccess Key IDなので入力しません。Secret Access Keyも絶対に入力しません。
+
+スクリプトはAccount IDの形式、`openshift-lab`のログイン先、`ap-northeast-3`を検査します。いずれかが異なる場合はguardを保存しません。Account ID、IAM ARN、Access Key IDを配布ログへ掲載しません。
 
 表示されたAccount、profile、regionを再確認し、次の形式の確認文字列を入力します。`<Account ID>`は画面に表示された承認済み値です。
 
@@ -105,7 +158,7 @@ bash scripts/00-register-expected-account.sh
 REGISTER-<Account ID>
 ```
 
-guardは`~/.config/openshift-upi-lab/expected-account-id`へ権限`600`で保存されます。以後のplanner、Apply、検証、destroyはこの値とAWS loginを照合します。AWS loginから期待値を自動生成しません。
+guardは`~/.config/openshift-upi-lab/expected-account-id`へ権限`600`で保存されます。以後のplanner、Apply、検証、destroyはこの値とAWS loginを自動照合します。新しいWSLシェルでもAccount IDの再入力や`EXPECTED_AWS_ACCOUNT_ID`のexportは不要です。AWS loginから期待値を自動生成しません。
 
 ### 必要なIAM権限
 
@@ -126,81 +179,104 @@ IAM権限の不足をAWSコンソールでの手動作成によって回避し�
 
 ## 3. Terraformを導入する
 
-最初に共通パッケージを導入します。
+まず検証済み版が既にあるか確認します。正確な`1.15.8`が見つかれば再導入しません。見つからない場合だけ、UbuntuのSnap版ではなくHashiCorp公式APTリポジトリから導入します。
 
 ```bash
-sudo apt-get update
-sudo apt-get install -y \
-  ca-certificates curl unzip gnupg wget \
-  jq git openssl openssh-client dnsutils pipx
-```
+TERRAFORM_REQUIRED_VERSION='1.15.8'
+TERRAFORM_CURRENT_VERSION="$({ terraform version -json 2>/dev/null || true; } \
+  | jq -r '.terraform_version // empty')"
 
-AWS CLI v2が未導入の場合は、[AWS公式Linuxインストール手順](https://docs.aws.amazon.com/cli/latest/userguide/getting-started-install.html)から検証済み`2.36.14`のx86_64版を導入します。公開鍵とsignatureを[公式の署名検証手順](https://docs.aws.amazon.com/cli/latest/userguide/getting-started-install.html#install-linux-verify-signature)で検証してから実行します。
+if [[ "$TERRAFORM_CURRENT_VERSION" == "$TERRAFORM_REQUIRED_VERSION" ]]; then
+  printf 'PASS: Terraform %s was retained.\n' "$TERRAFORM_CURRENT_VERSION"
+else
+  (
+    set -Eeuo pipefail
+    sudo apt-get update
+    sudo apt-get install -y ca-certificates gnupg software-properties-common wget
 
-```bash
-AWS_CLI_VERSION='2.36.14'
-curl -o /tmp/awscliv2.zip \
-  "https://awscli.amazonaws.com/awscli-exe-linux-x86_64-${AWS_CLI_VERSION}.zip"
-curl -o /tmp/awscliv2.zip.sig \
-  "https://awscli.amazonaws.com/awscli-exe-linux-x86_64-${AWS_CLI_VERSION}.zip.sig"
-# 公式ページのAWS CLI signing keyをimportした後に検証する。
-gpg --verify /tmp/awscliv2.zip.sig /tmp/awscliv2.zip
-unzip -q /tmp/awscliv2.zip -d /tmp/awscli-install
-sudo /tmp/awscli-install/aws/install --update
-aws --version
-```
+    wget -O- https://apt.releases.hashicorp.com/gpg \
+      | gpg --dearmor \
+      | sudo tee /usr/share/keyrings/hashicorp-archive-keyring.gpg >/dev/null
 
-UbuntuのSnap版ではなく、HashiCorp公式APTリポジトリから導入します。
+    gpg --no-default-keyring \
+      --keyring /usr/share/keyrings/hashicorp-archive-keyring.gpg \
+      --fingerprint
 
-```bash
-sudo apt-get update
-sudo apt-get install -y ca-certificates gnupg software-properties-common wget
+    echo 'Compare the displayed fingerprint with the HashiCorp official page.'
+    read -r -p 'Type HASHICORP-KEY-VERIFIED to continue: ' CONFIRM
+    [[ "$CONFIRM" == 'HASHICORP-KEY-VERIFIED' ]] || {
+      echo 'Terraform installation cancelled.' >&2
+      exit 1
+    }
 
-wget -O- https://apt.releases.hashicorp.com/gpg \
-  | gpg --dearmor \
-  | sudo tee /usr/share/keyrings/hashicorp-archive-keyring.gpg >/dev/null
+    echo "deb [arch=$(dpkg --print-architecture) signed-by=/usr/share/keyrings/hashicorp-archive-keyring.gpg] https://apt.releases.hashicorp.com $(grep -oP '(?<=UBUNTU_CODENAME=).*' /etc/os-release || lsb_release -cs) main" \
+      | sudo tee /etc/apt/sources.list.d/hashicorp.list
 
-gpg --no-default-keyring \
-  --keyring /usr/share/keyrings/hashicorp-archive-keyring.gpg \
-  --fingerprint
+    sudo apt-get update
+    apt-cache madison terraform | grep '1.15.8'
+    sudo apt-get install -y 'terraform=1.15.8-1'
+  )
+fi
 
-echo "deb [arch=$(dpkg --print-architecture) signed-by=/usr/share/keyrings/hashicorp-archive-keyring.gpg] https://apt.releases.hashicorp.com $(grep -oP '(?<=UBUNTU_CODENAME=).*' /etc/os-release || lsb_release -cs) main" \
-  | sudo tee /etc/apt/sources.list.d/hashicorp.list
-
-sudo apt-get update
-apt-cache madison terraform | grep '1.15.8'
-sudo apt-get install -y 'terraform=1.15.8-1'
 terraform version
+unset TERRAFORM_REQUIRED_VERSION TERRAFORM_CURRENT_VERSION
 ```
 
 表示したGPG fingerprintを[HashiCorp公式Linuxインストール案内](https://developer.hashicorp.com/terraform/install#linux)の公開鍵情報と別経路で照合してから、Terraformを使用します。
 
 ## 4. Ansibleを導入する
 
-UbuntuのシステムPythonを直接変更せず、公式ドキュメントが案内する`pipx`で`ansible-core`を分離して導入します。
+UbuntuのシステムPythonを直接変更せず、公式ドキュメントが案内する`pipx`で`ansible-core`を分離して導入します。正確な`2.21.2`が既に利用できる場合は再導入しません。
 
 ```bash
 pipx ensurepath
 export PATH="$HOME/.local/bin:$PATH"
-pipx install 'ansible-core==2.21.2'
+
+ANSIBLE_REQUIRED_VERSION='2.21.2'
+ANSIBLE_CURRENT_VERSION="$({ ansible --version 2>/dev/null || true; } \
+  | sed -n '1s/.*core \([^]]*\).*/\1/p')"
+
+if [[ "$ANSIBLE_CURRENT_VERSION" == "$ANSIBLE_REQUIRED_VERSION" ]]; then
+  printf 'PASS: ansible-core %s was retained.\n' "$ANSIBLE_CURRENT_VERSION"
+else
+  pipx install --force "ansible-core==$ANSIBLE_REQUIRED_VERSION"
+fi
+
 ansible --version
+unset ANSIBLE_REQUIRED_VERSION ANSIBLE_CURRENT_VERSION
 ```
 
 `pipx ensurepath`後は、新しいWSLシェルを開けばPATH設定が有効になります。AnsibleをAPTとpipxの両方へ重複導入しません。教材で必要なCollectionは後続の`requirements.yml`から導入します。配布リリースではCollectionのバージョン固定を確認し、未固定の場合は同じ動作を保証できないため先へ進みません。
 
-## 5. 必要ツールを確認する
+## 5. OpenShiftツールを確認・導入する
 
-`oc`と`openshift-install`は、[Red Hat Hybrid Cloud ConsoleのDownloads](https://console.redhat.com/openshift/downloads)からLinux x86_64版を取得します。既定・検証済みの正確な`4.21.26`の2つのarchiveと対応するSHA-256をダウンロードし、公開されたchecksumと照合してから、`~/.local/bin`などPATH上へ配置します。archiveを信頼せず、checksum検証を省略しません。
+最初に、現在PATH上で選択される`oc`と`openshift-install`の場所とバージョンを確認します。
 
 ```bash
-install -d -m 700 ~/.local/bin
-# ダウンロードした正確なファイル名と公式SHA-256を使用する。
-sha256sum openshift-client-linux*.tar.gz
-sha256sum openshift-install-linux*.tar.gz
-tar -xzf openshift-client-linux*.tar.gz -C ~/.local/bin oc kubectl
-tar -xzf openshift-install-linux*.tar.gz -C ~/.local/bin openshift-install
-chmod 755 ~/.local/bin/oc ~/.local/bin/kubectl ~/.local/bin/openshift-install
+export PATH="$HOME/.local/bin:$PATH"
+hash -r
+
+command -v oc || true
+command -v openshift-install || true
+oc version --client 2>/dev/null || true
+openshift-install version 2>/dev/null || true
 ```
+
+両方が正確に`4.21.26`の場合は再導入せず、次の「全コマンドを確認する」へ進みます。コマンドが見つからない場合や、片方でも別バージョンの場合だけ次を実行します。
+
+```bash
+cd "$LAB_ROOT"
+bash scripts/02-02-install-openshift-tools.sh
+
+export PATH="$HOME/.local/bin:$PATH"
+hash -r
+command -v oc
+command -v openshift-install
+oc version --client
+openshift-install version
+```
+
+スクリプトは検証済み`4.21.26`のLinux x86_64版を[Red Hat公式mirror](https://mirror.openshift.com/pub/openshift-v4/clients/ocp/4.21.26/)から一時ディレクトリへ取得します。公式`sha256sum.txt`によりクライアントとインストーラーの両方を検証した後、`~/.local/bin`へ配置します。ダウンロードファイルをカレントディレクトリへ事前配置する必要はありません。既に正確な版がPATH上にある場合、ダウンロードや上書きを行いません。
 
 次の全コマンドを確認します。
 
@@ -221,21 +297,31 @@ OpenShiftツールは正確な`4.21.26`へ統一します。`EXPECTED_OPENSHIFT_
 
 ## 6. SSH鍵を作成する
 
-既存ファイルを上書きしない専用名を使用します。
+専用名を使用し、既存の正常な鍵ペアは再利用します。秘密鍵または公開鍵の片方だけがある場合は、上書きや再生成をせず停止します。
 
 ```bash
-install -d -m 700 ~/.ssh
-ssh-keygen -t ed25519 -f ~/.ssh/openshift_upi_lab -C openshift-upi-lab
-chmod 600 ~/.ssh/openshift_upi_lab
-chmod 644 ~/.ssh/openshift_upi_lab.pub
+(
+  set -Eeuo pipefail
+  SSH_KEY="$HOME/.ssh/openshift_upi_lab"
+
+  install -d -m 700 "$HOME/.ssh"
+
+  if [[ -f "$SSH_KEY" && -f "$SSH_KEY.pub" ]]; then
+    echo 'Existing dedicated SSH key pair was retained.'
+  elif [[ -e "$SSH_KEY" || -e "$SSH_KEY.pub" ]]; then
+    echo 'ERROR: The SSH private/public key pair is incomplete.' >&2
+    exit 1
+  else
+    ssh-keygen -t ed25519 -f "$SSH_KEY" -C openshift-upi-lab
+  fi
+
+  chmod 600 "$SSH_KEY"
+  chmod 644 "$SSH_KEY.pub"
+  ssh-keygen -lf "$SSH_KEY.pub"
+)
 ```
 
-秘密鍵をGitへ追加してはいけません。
-
-```bash
-test -f ~/.ssh/openshift_upi_lab
-ssh-keygen -lf ~/.ssh/openshift_upi_lab.pub
-```
+新規生成時はpassphraseと確認入力を求められます。この構築例では空にせず、パスワードマネージャーで管理する専用passphraseを設定します。既存ペアを保持した場合はpassphraseを再入力しません。秘密鍵をGitへ追加してはいけません。
 
 ## 7. Pull Secretをローカルへ保存する
 
@@ -246,32 +332,52 @@ Pull Secretは、Red Hatアカウントで次の公式ページへログイン�
 
 ページの`Download pull secret`または`Download`を選択します。Pull SecretはRed Hatユーザーごとに発行され、レジストリへ認証するための情報を含みます。画面共有、チャット、Git、手順書へ内容を貼り付けません。
 
-ダウンロードしたファイルを、リポジトリ外のWSLホームへ保存します。Windowsのダウンロードフォルダーへ`pull-secret.txt`として保存された場合は、`<Windowsユーザー>`を自分のユーザー名へ置き換えます。
+既存の有効なPull Secretは再利用します。存在しない場合だけ、ダウンロード済みファイルのコピーまたはエディターへの貼り付けのどちらか1つを選びます。Pull Secretそのものは画面へ出力しません。
 
 ```bash
-install -d -m 700 ~/.config/openshift
-install -m 600 \
-  '/mnt/c/Users/<Windowsユーザー>/Downloads/pull-secret.txt' \
-  ~/.config/openshift/pull-secret.json
+(
+  set -Eeuo pipefail
+  PULL_SECRET="$HOME/.config/openshift/pull-secret.json"
+  install -d -m 700 "$HOME/.config/openshift"
+
+  if [[ -s "$PULL_SECRET" ]] && jq empty "$PULL_SECRET" 2>/dev/null; then
+    echo 'Existing valid Pull Secret was retained.'
+  elif [[ -e "$PULL_SECRET" ]]; then
+    echo "ERROR: Existing Pull Secret is empty or invalid: $PULL_SECRET" >&2
+    echo 'Repair or remove it explicitly, then rerun this step.' >&2
+    exit 1
+  else
+    echo '1: Copy a downloaded Pull Secret file'
+    echo '2: Paste the Pull Secret into vi'
+    read -r -p 'Select one method [1/2]: ' PULL_SECRET_METHOD
+
+    case "$PULL_SECRET_METHOD" in
+      1)
+        read -r -e -p 'Downloaded Pull Secret path in WSL: ' PULL_SECRET_SOURCE
+        [[ -s "$PULL_SECRET_SOURCE" ]] || {
+          echo "ERROR: File not found or empty: $PULL_SECRET_SOURCE" >&2
+          exit 1
+        }
+        install -m 600 "$PULL_SECRET_SOURCE" "$PULL_SECRET"
+        ;;
+      2)
+        umask 077
+        vi "$PULL_SECRET"
+        ;;
+      *)
+        echo 'ERROR: Select 1 or 2.' >&2
+        exit 1
+        ;;
+    esac
+  fi
+
+  jq empty "$PULL_SECRET"
+  chmod 600 "$PULL_SECRET"
+  stat -c '%a %n' "$PULL_SECRET"
+)
 ```
 
-ダウンロードではなく`Copy pull secret`を選択した場合は、次のファイルをエディターで開き、内容を貼り付けて保存します。
-
-```bash
-install -d -m 700 ~/.config/openshift
-umask 077
-vi ~/.config/openshift/pull-secret.json
-```
-
-どちらの方法でも、JSON構文と権限を確認します。Pull Secretそのものは画面へ出力しません。
-
-```bash
-jq empty ~/.config/openshift/pull-secret.json
-chmod 600 ~/.config/openshift/pull-secret.json
-stat -c '%a %n' ~/.config/openshift/pull-secret.json
-```
-
-`jq empty`が無言で終了し、`stat`の先頭が`600`なら正常です。Windows側に残ったダウンロードファイルは、WSL側への保存と検証が終わった後、不要であればWindowsから削除します。
+`jq empty`が無言で終了し、`stat`の先頭が`600`なら正常です。方法1を選んだ場合、入力待ちには`/mnt/c/Users/<Windowsユーザー>/Downloads/pull-secret.txt`のような実在するWSLパスを入力します。Windows側に残ったダウンロードファイルは、WSL側への保存と検証が終わった後、不要であればWindowsから削除します。
 
 ## 8. EC2クォータを確認する
 
@@ -465,6 +571,23 @@ git check-ignore "$SNAPSHOT_FILE"
 
 `git check-ignore`でファイル名が表示されれば、Gitの除外設定が有効です。AWSアカウントIDとIAM ARNは表示されるため、検査結果をチャットや公開場所へ貼る場合はマスクします。
 
+## 12. 構築前検査を実行する
+
+ここまでの準備を自動検査します。この検査が合格するまでTerraformの初期化やPlan作成へ進みません。
+
+```bash
+cd "$LAB_ROOT"
+bash scripts/02-03-preflight.sh
+```
+
+最後に次の3行が表示されることを確認します。`Failures`または`Warnings`が1以上の場合は03章へ進まず、表示された項目を解消して同じ検査を再実行します。
+
+```text
+Failures: 0
+Warnings: 0
+Preflight PASSED. It is safe to continue to Terraform planning.
+```
+
 ## 次へ進む条件
 
 - `aws sts get-caller-identity --profile openshift-lab` が成功する。
@@ -472,7 +595,8 @@ git check-ignore "$SNAPSHOT_FILE"
 - 専用SSH鍵とPull Secretがリポジトリ外にある。
 - EC2 vCPUクォータと対象AZのインスタンス提供状況を確認済み。
 - `lab.k8study.com` Hosted Zone IDを特定済み。
-- ログイン中のAccount IDが、別経路で承認済みの`EXPECTED_AWS_ACCOUNT_ID`と一致する。
+- 保存済みaccount guardがあり、ログイン中のAccount IDと一致する。
 - `LAB_ROOT`が現在の`upi-lab`ディレクトリを指す。
+- `scripts/02-03-preflight.sh`が`Failures: 0`、`Warnings: 0`で合格した。
 
-すべて満たしたら[03. 構築作業の全体フロー](03-build-runbook.md)へ進み、`scripts/00-preflight.sh`を実行します。
+すべて満たしたら[03. Terraformネットワーク基盤](03-terraform-network.md)へ進みます。

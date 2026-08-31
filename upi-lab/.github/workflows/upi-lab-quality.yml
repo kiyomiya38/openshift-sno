@@ -63,11 +63,11 @@ jobs:
 
       - name: Audit release source
         shell: bash
-        run: bash scripts/91-build-release.sh --audit-only
+        run: bash scripts/93-build-release.sh --audit-only
 
       - name: Prove a clean release can be staged
         shell: bash
-        run: bash scripts/91-build-release.sh "$RUNNER_TEMP/upi-lab-release"
+        run: bash scripts/93-build-release.sh "$RUNNER_TEMP/upi-lab-release"
 
       - name: Test release-builder rejection rules
         shell: bash
@@ -79,4 +79,4 @@ jobs:
 
       - name: Run offline static validation
         shell: bash
-        run: bash scripts/90-static-validation.sh
+        run: bash scripts/91-static-validation.sh

@@ -26,6 +26,14 @@ openshift:
   version: "4.21.26"
   architecture: "amd64"
   release_image_digest: "sha256:f2cd6a3878eade92951168bd9491cc4828f02e41e41c4d7fad8d7c7948156304"
+  client_tools:
+    mirror_base_url: "https://mirror.openshift.com/pub/openshift-v4/clients/ocp/4.21.26"
+    client_archive:
+      filename: "openshift-client-linux-4.21.26.tar.gz"
+      sha256: "07012f7d450384184c87910c81c81fbd4ebb388e2dcb80aa32837bf22af5c4dc"
+    installer_archive:
+      filename: "openshift-install-linux-4.21.26.tar.gz"
+      sha256: "253294bfcb740e45b32614571045359bab0a9f9448f2064bb8069aeb23577b47"
 supply_chain:
   easy_rsa:
     version: "3.2.6"

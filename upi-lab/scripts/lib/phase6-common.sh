@@ -54,7 +54,8 @@ phase6_export_base_terraform_vars() {
 
 phase6_load_cluster_env() {
   phase6_require_file "$CLUSTER_ENV_FILE"
-  # This file is generated locally by scripts/15 and scripts/18 with shell-escaped values.
+  # This file is generated locally by scripts/06-01-prepare-openshift-install.sh
+  # and scripts/06-04-generate-stage-ignition.sh with shell-escaped values.
   # shellcheck disable=SC1090
   source "$CLUSTER_ENV_FILE"
 
@@ -78,13 +79,190 @@ phase6_require_complete_assets() {
   phase6_require_file "$INSTALL_DIR/worker.ign"
 }
 
+phase6_expected_node_ip() {
+  case "$1" in
+    control-plane-0.ocp.lab.k8study.com | worker-0.ocp.lab.k8study.com)
+      [[ "$1" == control-plane-0.* ]] && printf '10.80.10.10\n' || printf '10.80.10.20\n'
+      ;;
+    control-plane-1.ocp.lab.k8study.com | worker-1.ocp.lab.k8study.com)
+      [[ "$1" == control-plane-1.* ]] && printf '10.80.20.10\n' || printf '10.80.20.20\n'
+      ;;
+    control-plane-2.ocp.lab.k8study.com | worker-2.ocp.lab.k8study.com)
+      [[ "$1" == control-plane-2.* ]] && printf '10.80.30.10\n' || printf '10.80.30.20\n'
+      ;;
+    *)
+      return 1
+      ;;
+  esac
+}
+
+phase6_expected_nodes_json() {
+  jq -cn '[
+    {name:"control-plane-0.ocp.lab.k8study.com",ip:"10.80.10.10",role:"control-plane"},
+    {name:"control-plane-1.ocp.lab.k8study.com",ip:"10.80.20.10",role:"control-plane"},
+    {name:"control-plane-2.ocp.lab.k8study.com",ip:"10.80.30.10",role:"control-plane"},
+    {name:"worker-0.ocp.lab.k8study.com",ip:"10.80.10.20",role:"worker"},
+    {name:"worker-1.ocp.lab.k8study.com",ip:"10.80.20.20",role:"worker"},
+    {name:"worker-2.ocp.lab.k8study.com",ip:"10.80.30.20",role:"worker"}
+  ]'
+}
+
+phase6_actual_nodes_json() {
+  local nodes_json="$1"
+
+  jq -c '[.items[] | {
+    name: .metadata.name,
+    ip: ([.status.addresses[]? | select(.type == "InternalIP") | .address]
+      | if length == 1 then .[0] else join(",") end),
+    role: (
+      if .metadata.labels["node-role.kubernetes.io/control-plane"] != null then "control-plane"
+      elif .metadata.labels["node-role.kubernetes.io/worker"] != null then "worker"
+      else ""
+      end
+    )
+  }]' <<<"$nodes_json"
+}
+
+phase6_assert_expected_node_subset() {
+  local nodes_json="$1"
+  local expected_nodes actual_nodes unexpected_nodes
+
+  expected_nodes="$(phase6_expected_nodes_json)"
+  actual_nodes="$(phase6_actual_nodes_json "$nodes_json")"
+  unexpected_nodes="$(jq -c --argjson expected "$expected_nodes" \
+    '[.[] | . as $node | select(any($expected[]; . == $node) | not)]' \
+    <<<"$actual_nodes")"
+
+  if [[ "$(jq 'length' <<<"$unexpected_nodes")" != 0 ]]; then
+    printf 'Unexpected registered node identity, InternalIP, or role:\n' >&2
+    jq -r '.[] | "  name=\(.name) ip=\(.ip) role=\(.role)"' \
+      <<<"$unexpected_nodes" >&2
+    phase6_error 'Registered nodes do not match the OpenShift UPI lab design.'
+  fi
+}
+
+phase6_expected_node_inventory_complete() {
+  local nodes_json="$1"
+  local expected_nodes actual_nodes
+
+  expected_nodes="$(phase6_expected_nodes_json)"
+  actual_nodes="$(phase6_actual_nodes_json "$nodes_json")"
+  jq -e --argjson expected "$expected_nodes" \
+    'sort_by(.name) == ($expected | sort_by(.name))' \
+    <<<"$actual_nodes" >/dev/null
+}
+
+phase6_assert_expected_node_inventory() {
+  local nodes_json="$1"
+  local actual_nodes
+
+  phase6_assert_expected_node_subset "$nodes_json"
+  if ! phase6_expected_node_inventory_complete "$nodes_json"; then
+    actual_nodes="$(phase6_actual_nodes_json "$nodes_json")"
+    printf 'Registered node inventory is incomplete:\n' >&2
+    jq -r '.[] | "  name=\(.name) ip=\(.ip) role=\(.role)"' \
+      <<<"$actual_nodes" >&2
+    phase6_error 'Expected exactly the six designed OpenShift nodes.'
+  fi
+}
+
+PHASE6_CSR_ELIGIBILITY_REASON=''
+
+phase6_csr_is_expected_node_request() {
+  local csr_json="$1"
+  local request_file="$2"
+  local signer requestor subject subject_compact node_fqdn expected_ip
+  local usages san_output san_entries expected_san_entries
+
+  PHASE6_CSR_ELIGIBILITY_REASON=''
+  if ! openssl req -in "$request_file" -noout -verify >/dev/null 2>&1; then
+    PHASE6_CSR_ELIGIBILITY_REASON='The certificate request signature is invalid.'
+    return 1
+  fi
+
+  subject="$(openssl req -in "$request_file" -noout -subject -nameopt RFC2253 2>/dev/null)" || {
+    PHASE6_CSR_ELIGIBILITY_REASON='The certificate request subject cannot be decoded.'
+    return 1
+  }
+  subject_compact="${subject//[[:space:]]/}"
+  if [[ "$subject_compact" =~ CN=system:node:([^,]+) ]]; then
+    node_fqdn="${BASH_REMATCH[1]}"
+  else
+    PHASE6_CSR_ELIGIBILITY_REASON='The subject CN is not an expected system:node identity.'
+    return 1
+  fi
+
+  expected_ip="$(phase6_expected_node_ip "$node_fqdn" 2>/dev/null)" || {
+    PHASE6_CSR_ELIGIBILITY_REASON="The node FQDN is not in the lab design: $node_fqdn"
+    return 1
+  }
+  if [[ "$subject_compact" != "subject=CN=system:node:${node_fqdn},O=system:nodes" &&
+        "$subject_compact" != "subject=O=system:nodes,CN=system:node:${node_fqdn}" ]]; then
+    PHASE6_CSR_ELIGIBILITY_REASON='The subject contains an unexpected organization or attribute.'
+    return 1
+  fi
+
+  signer="$(jq -r '.spec.signerName // ""' <<<"$csr_json")"
+  requestor="$(jq -r '.spec.username // ""' <<<"$csr_json")"
+  usages="$(jq -r '(.spec.usages // []) | sort | join(",")' <<<"$csr_json")"
+  san_output="$(openssl req -in "$request_file" -noout -text 2>/dev/null |
+    sed -n '/X509v3 Subject Alternative Name:/{n;p;}')"
+
+  case "$signer" in
+    kubernetes.io/kube-apiserver-client-kubelet)
+      [[ "$requestor" == system:serviceaccount:openshift-machine-config-operator:node-bootstrapper ]] || {
+        PHASE6_CSR_ELIGIBILITY_REASON='The kubelet client CSR Requestor is not node-bootstrapper.'
+        return 1
+      }
+      [[ "$usages" == 'client auth,digital signature' ||
+        "$usages" == 'client auth,digital signature,key encipherment' ]] || {
+        PHASE6_CSR_ELIGIBILITY_REASON="The kubelet client CSR usages are unexpected: $usages"
+        return 1
+      }
+      [[ -z "$san_output" ]] || {
+        PHASE6_CSR_ELIGIBILITY_REASON='A kubelet client CSR must not contain a Subject Alternative Name.'
+        return 1
+      }
+      ;;
+    kubernetes.io/kubelet-serving)
+      [[ "$requestor" == "system:node:${node_fqdn}" ]] || {
+        PHASE6_CSR_ELIGIBILITY_REASON='The kubelet serving CSR Requestor does not match its subject CN.'
+        return 1
+      }
+      [[ "$usages" == 'digital signature,server auth' ||
+        "$usages" == 'digital signature,key encipherment,server auth' ]] || {
+        PHASE6_CSR_ELIGIBILITY_REASON="The kubelet serving CSR usages are unexpected: $usages"
+        return 1
+      }
+      [[ -n "$san_output" ]] || {
+        PHASE6_CSR_ELIGIBILITY_REASON='The kubelet serving CSR has no Subject Alternative Name.'
+        return 1
+      }
+      san_entries="$(tr -d '[:space:]' <<<"$san_output" |
+        tr ',' '\n' | sed '/^$/d' | LC_ALL=C sort)"
+      expected_san_entries="$(printf 'DNS:%s\nIPAddress:%s\n' "$node_fqdn" "$expected_ip" |
+        LC_ALL=C sort)"
+      [[ "$san_entries" == "$expected_san_entries" ]] || {
+        PHASE6_CSR_ELIGIBILITY_REASON="The serving CSR SAN set is not exactly DNS:${node_fqdn} and IPAddress:${expected_ip}."
+        return 1
+      }
+      ;;
+    *)
+      PHASE6_CSR_ELIGIBILITY_REASON="Signer is not eligible for manual node bootstrap approval: $signer"
+      return 1
+      ;;
+  esac
+
+  return 0
+}
+
 phase6_assert_assets_fresh() {
   [[ ${ASSET_GENERATED_EPOCH:-} =~ ^[0-9]+$ ]] || phase6_error 'cluster.env has no valid ASSET_GENERATED_EPOCH.'
 
   local age_seconds
   age_seconds=$(( $(date +%s) - ASSET_GENERATED_EPOCH ))
   (( age_seconds >= 0 )) || phase6_error 'The local clock is earlier than the Ignition generation time.'
-  (( age_seconds < 43200 )) || phase6_error 'Ignition is 12 hours old or older. Start Phase 6 again with scripts/15-prepare-openshift-install.sh.'
+  (( age_seconds < 43200 )) || phase6_error 'Ignition is 12 hours old or older. Restart the OpenShift installation procedure with scripts/06-01-prepare-openshift-install.sh.'
 }
 
 phase6_export_asset_terraform_vars() {

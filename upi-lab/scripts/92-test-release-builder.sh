@@ -28,10 +28,10 @@ tar -C "$LAB_ROOT" \
   --exclude='./dist' \
   -cf - . | tar -C "$FIXTURE" -xf -
 
-bash "$FIXTURE/scripts/91-build-release.sh" --audit-only
+bash "$FIXTURE/scripts/93-build-release.sh" --audit-only
 
 inside_output="$FIXTURE/forbidden-output"
-if bash "$FIXTURE/scripts/91-build-release.sh" "$inside_output" >/dev/null 2>&1; then
+if bash "$FIXTURE/scripts/93-build-release.sh" "$inside_output" >/dev/null 2>&1; then
   printf 'ERROR: The release builder accepted an output directory inside the source tree.\n' >&2
   exit 1
 fi
@@ -40,8 +40,8 @@ if [[ -e "$inside_output" ]]; then
   exit 1
 fi
 
-bash "$FIXTURE/scripts/91-build-release.sh" "$OUTPUT"
-bash "$FIXTURE/scripts/91-build-release.sh" "$SECOND_OUTPUT"
+bash "$FIXTURE/scripts/93-build-release.sh" "$OUTPUT"
+bash "$FIXTURE/scripts/93-build-release.sh" "$SECOND_OUTPUT"
 
 archive="$OUTPUT/openshift-upi-lab-source.tar.gz"
 checksum="$archive.sha256"
@@ -81,7 +81,7 @@ fi
 
 mkdir -p -- "$FIXTURE/terraform"
 printf '{"sensitive":"fixture"}\n' >"$FIXTURE/terraform/leak.tfstate"
-if bash "$FIXTURE/scripts/91-build-release.sh" --audit-only >/dev/null 2>&1; then
+if bash "$FIXTURE/scripts/93-build-release.sh" --audit-only >/dev/null 2>&1; then
   printf 'ERROR: The release audit accepted a Terraform state fixture.\n' >&2
   exit 1
 fi
@@ -89,7 +89,7 @@ fi
 rm -f -- "$FIXTURE/terraform/leak.tfstate"
 mkdir -p -- "$FIXTURE/configs"
 printf '%s%s\n' '-----BEGIN PRIV' 'ATE KEY-----' >"$FIXTURE/configs/leaked-secret.txt"
-if bash "$FIXTURE/scripts/91-build-release.sh" --audit-only >/dev/null 2>&1; then
+if bash "$FIXTURE/scripts/93-build-release.sh" --audit-only >/dev/null 2>&1; then
   printf 'ERROR: The release audit accepted a private-key fixture.\n' >&2
   exit 1
 fi

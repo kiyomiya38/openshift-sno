@@ -67,7 +67,7 @@ OpenShift公式最小値はBootstrap/Control Planeが4 CPU・16 GiB RAM・100 GB
 
 インスタンスタイプは`terraform/locals.tf`の固定プロファイル値です。変更する場合はAMI、必要vCPU、メモリー、AZ在庫、ストレージ、Terraform Plan、E2E結果を一式再検証します。構築前検査で現行値のAZ別提供状況とService Quotasを検証します。
 
-基盤7台のRHEL 9.6 AMIは`terraform.tfvars`の`rhel_ami_id`へリージョン固有IDを固定します。配布リリースごとにRed Hat Owner、AMI名、x86_64、`available`を検証して更新し、利用者が名前パターンや`most_recent`で自動選択しません。OpenShift NodeのRHCOS AMIは既定の`openshift-install 4.21.26`から取得し、スクリプト15がOwner、状態、architectureを検証します。
+基盤7台のRHEL 9.6 AMIは`terraform.tfvars`の`rhel_ami_id`へリージョン固有IDを固定します。配布リリースごとにRed Hat Owner、AMI名、x86_64、`available`を検証して更新し、利用者が名前パターンや`most_recent`で自動選択しません。OpenShift NodeのRHCOS AMIは既定の`openshift-install 4.21.26`から取得し、`scripts/06-01-prepare-openshift-install.sh`がOwner、状態、architectureを検証します。
 
 ## NLBの固定プライベートIP
 
@@ -142,3 +142,5 @@ APIはLayer 4、ステートレス、セッション維持なしとします。`
 - CIDRが相互および利用場所のネットワークと重複していない。
 - 各ホスト、IP、AZ、役割が一意である。
 - DNSとロードバランサーの全必須レコード・ポートを説明できる。
+
+すべて満たしたら[02. AWS・WSL事前準備](02-prerequisites.md)へ進みます。

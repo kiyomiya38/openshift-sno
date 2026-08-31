@@ -1,13 +1,15 @@
 #!/usr/bin/env bash
+# このファイルを configs/environment へコピーし、実環境の値へ変更する。
+# configs/environment は Git 管理外であり、既存ファイルをサンプルで上書きしない。
 export AWS_REGION="ap-northeast-3"
 export AWS_PROFILE="ocp-lab"
 export CLUSTER_NAME="ocp-sno"
+# 必ず所有する Route 53 Public Hosted Zone 名へ変更する。
+# scheme、path、末尾のドット、CLUSTER_NAME、api、apps は含めない。
 export BASE_DOMAIN="example.jp"
 export INSTALL_DIR="${HOME}/ocp-install"
-# 空欄ならインストール済みバイナリのバージョンを採用する。
-export OPENSHIFT_VERSION="latest-4.21"
 # scripts/01 が大阪リージョンで候補を確認する。利用可能な型を設定する。
 export CONTROL_PLANE_INSTANCE_TYPE="m6i.2xlarge"
 export CONTROL_PLANE_VOLUME_SIZE="150"
 export PULL_SECRET_FILE="${HOME}/.secrets/pull-secret.txt"
-export SSH_PUBLIC_KEY_FILE="${HOME}/.ssh/id_ed25519.pub"
+export SSH_PUBLIC_KEY_FILE="${HOME}/.ssh/openshift_sno.pub"

@@ -42,7 +42,7 @@ CIDRが自宅LAN、社内LAN、既存VPC、他VPN、Direct Connect、Transit Gat
 | 基盤AMI | `ap-northeast-3`の検証済みRHEL 9.6 AMIをrelease単位でID固定 |
 | 補助ツール | Bash、OpenSSL 3、jq 1.7系、Git 2.43系、`dig`、SSH |
 
-正確な依存バージョンは[検証バージョン一覧](configs/tested-versions.yaml)を正本とします。上記は互換性を永久に保証するものではありません。構築開始時に[`scripts/00-preflight.sh`](scripts/00-preflight.sh)の合格と、利用する正確なバージョンを作業記録へ残してください。実装の検証履歴は[検証レポート](docs/validation-report.md)へ分離しています。
+正確な依存バージョンは[検証バージョン一覧](configs/tested-versions.yaml)を正本とします。上記は互換性を永久に保証するものではありません。構築開始時に[02. AWS・WSL事前準備](docs/02-prerequisites.md)の構築前検査合格と、利用する正確なバージョンを作業記録へ残してください。実装の検証履歴は[検証レポート](docs/validation-report.md)へ分離しています。
 
 `EXPECTED_OPENSHIFT_VERSION`で別patchを明示できますが、それは未検証のprofile変更です。`oc`と`openshift-install`を同じ値に揃えるだけではサポート済みになりません。AMI、release image、手順、静的検査、構築・削除のE2Eを再検証し、検証バージョン一覧を更新してから配布します。
 
@@ -69,38 +69,23 @@ IAM権限、ツール導入、DNS、秘密情報の配置は[02. AWS・WSL事前
 
 ## 手順の進め方
 
-WSLでリポジトリを取得し、`upi-lab`へ移動した時点の絶対パスを設定します。以降の章ではこの変数を使用します。
+READMEは表紙と案内です。ここではコマンドを実行しません。通常構築は、次の番号付きコンテンツを上から順番に開き、各章の完了条件を満たしてから次の番号へ進めます。途中の章から開始したり、後続章を先に実行したりしません。AWSリソース作成後に構築を中止する場合だけ、停止した章から08章へ移動します。
 
-```bash
-cd /path/to/openshift-sno/upi-lab
-export LAB_ROOT="$PWD"
-test -x "$LAB_ROOT/scripts/00-preflight.sh"
-```
+| コンテンツ番号 | 文書 | 実施内容 |
+|---:|---|---|
+| 00 | [設計判断](docs/00-design-decisions.md) | 対象範囲と設計上の制限を読む |
+| 01 | [アーキテクチャとパラメーター](docs/01-architecture-and-parameters.md) | 構成、固定IP、通信経路を読む |
+| 02 | [AWS・WSL事前準備](docs/02-prerequisites.md) | ツール、AWS、秘密情報、構築前検査を準備 |
+| 03 | [Terraformネットワーク基盤](docs/03-terraform-network.md) | VPC、Subnet、NAT、Routeを構築 |
+| 04 | [AWS Client VPN](docs/04-client-vpn.md) | 管理端末からVPCへの接続を構築 |
+| 05 | [基盤EC2と基盤サービス](docs/05-infrastructure-services.md) | DNS、NTP、HAProxy、Proxy、Registry、NFSを構築 |
+| 06 | [OpenShift UPIインストール](docs/06-openshift-install.md) | OpenShiftクラスターを構築 |
+| 07 | [StorageClassと障害試験](docs/07-storage-and-failure-tests.md) | NFSを必須検証し、任意の障害試験を実施 |
+| 08 | [完全削除](docs/08-destroy.md) | AWSとローカルのラボ資材を完全削除 |
 
-各章の完了条件を満たしてから次へ進みます。一括貼り付けせず、Planのactionと確認文字列を毎回確認してください。
+問題が発生した場合だけ[09. トラブルシューティング](docs/09-troubleshooting.md)を参照し、解消後は停止した番号へ戻ります。[99. 公式資料](docs/99-references.md)は参考情報です。配布担当者向けの作業は[配布物の監査と作成](docs/release-process.md)へ分離しています。
 
-1. [設計方針](docs/00-design-decisions.md)
-2. [構成と固定パラメーター](docs/01-architecture-and-parameters.md)
-3. [AWS・WSL事前準備](docs/02-prerequisites.md)
-4. [構築作業の全体フロー](docs/03-build-runbook.md)
-5. [Terraformネットワーク基盤](docs/04-terraform-network.md)
-6. [AWS Client VPN](docs/05-client-vpn.md)
-7. [基盤EC2と基盤サービス](docs/06-infrastructure-services.md)
-8. [OpenShift UPIインストール](docs/07-openshift-install.md)
-9. [検証と完全削除](docs/08-validation-and-destroy.md)
-10. [トラブルシューティング](docs/09-troubleshooting.md)
-11. [公式資料](docs/99-references.md)
-
-配布版の変更は[リリースノート](docs/release-notes.md)、旧版stateの継続利用は[移行ノート](docs/upgrade-notes.md)、実機検証の範囲は[検証レポート](docs/validation-report.md)を参照してください。
-
-AWS CLI profileとツールを[02. 事前準備](docs/02-prerequisites.md)どおり準備し、AWS loginとは別経路で承認したAccount IDを最初に登録します。
-
-```bash
-cd "$LAB_ROOT"
-export EXPECTED_AWS_ACCOUNT_ID='<承認済みの12桁Account ID>'
-bash scripts/00-register-expected-account.sh
-bash scripts/00-preflight.sh
-```
+Terraformを変更する各章は、その章内で`Plan作成 → Planの人手レビュー → Apply → 検証`を完結させます。コマンドを一括貼り付けせず、非ゼロ終了、`ERROR`、`FAILED`または想定外のPlanが表示された時点で停止してください。
 
 ## 主要な安全ルール
 
@@ -111,9 +96,9 @@ bash scripts/00-preflight.sh
 - AWSコンソールでTerraform管理リソースを手動作成・削除しません。
 - Bootstrap後のIgnitionを別クラスターへ再利用しません。
 - HAProxy/Worker障害試験のrecovery markerが残る状態ではTerraform操作を行いません。
-- 作業終了時は[完全削除手順](docs/08-validation-and-destroy.md#6-完全削除)で、AWSとローカル資材を別々に確認します。
+- 作業終了時は[08. 完全削除](docs/08-destroy.md)で、AWSとローカル資材を別々に確認します。
 
-AWS cleanupの合格後は`scripts/35-clean-local-artifacts.sh`でローカル生成物をpreview/隔離/削除できます。配布時は`scripts/90-static-validation.sh`、`scripts/92-test-release-builder.sh`、`scripts/91-build-release.sh --audit-only`を合格させ、`scripts/91-build-release.sh <upi-lab外の出力先>`が作るarchiveだけを配布します。
+AWS cleanup後のローカル生成物のpreview、隔離、削除も[08. 完全削除](docs/08-destroy.md)に従います。配布作業は構築番号とは分離した[配布物作成手順](docs/release-process.md)を使用します。
 
 ## 既知の単一障害点
 

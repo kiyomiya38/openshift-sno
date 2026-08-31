@@ -67,3 +67,5 @@ HAProxy 2台とOpenShift Nodeの3 AZ配置は検証しますが、環境全体�
 - 内部公開、DNS、NLB、HAProxy、Proxyの責任分界を説明できる。
 - 初期構成の単一障害点がNAT Gateway、Proxy、Registry、NFSであることを説明できる。
 - この環境を正式なAWS本番構成と呼ばない理由を説明できる。
+
+すべて満たしたら[01. 構成とパラメーター](01-architecture-and-parameters.md)へ進みます。

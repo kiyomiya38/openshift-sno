@@ -95,7 +95,7 @@ variable "client_vpn_dns_servers" {
 }
 
 variable "enable_infrastructure_services" {
-  description = "Creates the Phase 4 infrastructure EC2 instances, security groups, IAM profile, and internal NLB."
+  description = "Creates the chapter 05 infrastructure EC2 instances, security groups, IAM profile, and internal NLB."
   type        = bool
   default     = false
 }

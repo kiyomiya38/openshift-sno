@@ -20,3 +20,19 @@
       ansible.builtin.file:
         path: "/var/www/html/openshift-upi-lab/{{ ignition_infra_id }}"
         state: absent
+
+    - name: Check that Apache is inactive
+      ansible.builtin.command: systemctl is-active httpd
+      register: ignition_httpd_status
+      changed_when: false
+      failed_when: ignition_httpd_status.stdout | trim != 'inactive'
+
+    - name: Check that the served Ignition directory is absent
+      ansible.builtin.stat:
+        path: "/var/www/html/openshift-upi-lab/{{ ignition_infra_id }}"
+      register: served_ignition_directory
+
+    - name: Validate that private Ignition serving was removed
+      ansible.builtin.assert:
+        that:
+          - not served_ignition_directory.stat.exists

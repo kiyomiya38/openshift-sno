@@ -31,8 +31,8 @@ mmdc --version
 リポジトリ直下の`upi-lab`で次を実行します。
 
 ```bash
-bash scripts/93-render-diagrams.sh
-bash scripts/90-static-validation.sh
+bash scripts/90-render-diagrams.sh
+bash scripts/91-static-validation.sh
 ```
 
 スクリプトは3個の`.mmd`から同名の`.svg`と`.png`を上書き生成します。SVG・PNGを直接編集しません。生成後は3画像を100%表示で開き、文字切れ、矢印の方向、重なり、IP・ポートを目視確認します。

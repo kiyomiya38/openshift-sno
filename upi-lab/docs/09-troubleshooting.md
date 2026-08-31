@@ -45,7 +45,7 @@ VPNプロセスの開始に失敗しました。ポートは別のプロセス�
 Options error: Unrecognized option or missing or extra parameter(s): verify-x509-name
 ```
 
-`scripts/04-export-client-vpn-config.sh`を再実行し、AWS VPN Clientの既存プロファイルを削除して、新しい`.ovpn`をインポートします。このスクリプトは空白を含むCA名を引用符付きへ自動補正します。
+`scripts/04-06-export-client-vpn-config.sh`を再実行し、AWS VPN Clientの既存プロファイルを削除して、新しい`.ovpn`をインポートします。このスクリプトは空白を含むCA名を引用符付きへ自動補正します。
 
 上記の設定エラーがない場合は、Windows PowerShellでポート443の所有プロセスを特定します。
 
@@ -85,7 +85,7 @@ dig +short @10.80.40.11 ocp.lab.k8study.com SOA
 dig +short @10.80.50.11 ocp.lab.k8study.com SOA
 ```
 
-内容とserialが一致していれば、一時的な応答失敗の可能性があります。`scripts/22-validate-cluster-nodes.sh`は各問い合わせを最大5回再試行します。再実行しても失敗する場合は、ノードを作り直さず表示された実応答を調査します。
+内容とserialが一致していれば、一時的な応答失敗の可能性があります。`scripts/06-08-validate-cluster-nodes.sh`は各問い合わせを最大5回再試行します。再実行しても失敗する場合は、ノードを作り直さず表示された実応答を調査します。
 
 ## `bootstrap-complete`がタイムアウトする
 
@@ -107,7 +107,7 @@ Bootstrapを削除してやり直す前に、`openshift-install`のdebug logと�
 
 ```bash
 cd "$LAB_ROOT"
-bash scripts/19-validate-cluster-prerequisites.sh
+bash scripts/06-05-validate-cluster-prerequisites.sh
 
 terraform -chdir=terraform output cluster_dhcp_options_id
 terraform -chdir=terraform output openshift_instances
@@ -150,12 +150,12 @@ aws ec2 get-console-output \
 
 全Target Groupが片系へ収束した直後でも、NLBデータプレーン側の反映がわずかに遅れ、`curl: (28)`やconnection resetが一時的に発生する場合があります。Target Health APIが片系を`healthy`と返したことだけでは継続性試験の合格にしません。
 
-`scripts/33-test-haproxy-failover.sh`は、3つのNLB固定IPごとにAPIとConsoleを再試行し、各経路が3回連続で成功することを要求します。最大24回の範囲で回復すれば収束中の一時失敗として記録し、連続成功しなければ試験を不合格にして停止対象を自動復旧します。
+`scripts/07-04-test-haproxy-failover.sh`は、3つのNLB固定IPごとにAPIとConsoleを再試行し、各経路が3回連続で成功することを要求します。最大24回の範囲で回復すれば収束中の一時失敗として記録し、連続成功しなければ試験を不合格にして停止対象を自動復旧します。
 
 同様の不合格後は自動復旧の完了、marker削除、全Target Groupの`2/2 healthy`を確認し、**同じ対象**を新しいpreflightから再試験します。
 
 ```bash
-bash scripts/33-test-haproxy-failover.sh --preflight-only haproxy-1
+bash scripts/07-04-test-haproxy-failover.sh --preflight-only haproxy-1
 ```
 
 上記は`haproxy-1`を再確認する例です。対象が`haproxy-0`なら末尾だけを置き換えます。
@@ -163,13 +163,13 @@ bash scripts/33-test-haproxy-failover.sh --preflight-only haproxy-1
 - 終了コードが`0`以外であったことを隠して合格扱いにしない。
 - 復旧markerが削除され、両HAProxyが`running`かつstatus check正常である。
 - 全4 Target Groupが`2/2 healthy`へ戻っている。
-- スクリプト29が`Failures: 0`である。
+- `scripts/06-15-validate-openshift-cluster.sh`が`Failures: 0`である。
 
 タイムアウトが同じNLB IP・同じportで繰り返す場合は、単なる収束遅延として扱わず、NLB listener、Target Group、Security Group、HAProxy frontend/backend、Ingress Routerを調査します。
 
 ## Worker再起動試験が中断する
 
-`aws ec2 reboot-instances`は非同期であり、再起動中もEC2 Instance stateが`running`のままの場合があります。`instance-running`やNodeのAgeだけを完了判定にせず、スクリプト34が保存した再起動前の`bootID`と、現在の`.status.nodeInfo.bootID`を比較します。
+`aws ec2 reboot-instances`は非同期であり、再起動中もEC2 Instance stateが`running`のままの場合があります。`instance-running`やNodeのAgeだけを完了判定にせず、`scripts/07-05-test-worker-reboot.sh`が保存した再起動前の`bootID`と、現在の`.status.nodeInfo.bootID`を比較します。
 
 ```bash
 export KUBECONFIG="$HOME/.local/share/openshift-upi-lab/install/auth/kubeconfig"
@@ -179,14 +179,14 @@ jq '{target_name,stage,boot_id_before,boot_id_after,reboot_may_have_been_request
   "$HOME/.config/openshift-upi-lab/worker-reboot-recovery.json"
 ```
 
-対象Nodeが`Ready,SchedulingDisabled`で、MCO annotationが`currentConfig == desiredConfig`かつ`state=Done`でも、手動cordon中のworker MCPは通常、`machine=3 / ready=2 / updated=3 / unavailable=1 / degraded=0`、`Updated=False / Updating=True / Degraded=False`になります。これはcordonされたNodeをMCPがunavailableとして数えるためで、Node再起動の失敗ではありません。スクリプト34はこの限定状態をuncordon前の正常な保守状態として扱い、uncordon後に厳格な3/3を確認します。
+対象Nodeが`Ready,SchedulingDisabled`で、MCO annotationが`currentConfig == desiredConfig`かつ`state=Done`でも、手動cordon中のworker MCPは通常、`machine=3 / ready=2 / updated=3 / unavailable=1 / degraded=0`、`Updated=False / Updating=True / Degraded=False`になります。これはcordonされたNodeをMCPがunavailableとして数えるためで、Node再起動の失敗ではありません。`scripts/07-05-test-worker-reboot.sh`はこの限定状態をuncordon前の正常な保守状態として扱い、uncordon後に厳格な3/3を確認します。
 
 古い実行プロセスがこの状態で`Waiting for MCP...`を繰り返している場合は、別の試験や手動uncordonを重ねません。元のプロセスが終了してプロンプトへ戻り、markerが保持されていることを確認してから、修正版の`--recover`を1回実行します。
 
 drainがPodDisruptionBudgetまたは管理元のないPodで停止した場合は、`--disable-eviction`や`--force`を追加しません。reboot未送信ならEXIT trapが対象をuncordonします。markerが残った場合は、Nodeを手動でuncordonしたりmarkerを削除したりせず、次を実行します。
 
 ```bash
-bash scripts/34-test-worker-reboot.sh --recover
+bash scripts/07-05-test-worker-reboot.sh --recover
 ```
 
 NodeがReadyへ戻らない場合はmarkerを保持して次のWorkerへ進まず、証拠を取得します。
@@ -205,9 +205,9 @@ aws ec2 get-console-output \
   --output text
 ```
 
-Pending CSRがある場合は自動承認しません。`scripts/27-review-csrs.sh`でrequestor、signer、Node名、IP、Instance IDを個別確認した後、`--recover`を再実行します。Ignitionの再生成、Node削除、EC2 terminate、Terraformによる置換は通常の再起動復旧に含めません。InstallerのIgnition HTTP配信は停止済みであるため、安易なEC2置換では新Nodeを復旧できません。
+Pending CSRがある場合は自動承認しません。`scripts/06-13-review-csrs.sh`でrequestor、signer、Node名、IP、Instance IDを個別確認した後、`--recover`を再実行します。Ignitionの再生成、Node削除、EC2 terminate、Terraformによる置換は通常の再起動復旧に含めません。InstallerのIgnition HTTP配信は停止済みであるため、安易なEC2置換では新Nodeを復旧できません。
 
-## Phase 6のPlan検査が失敗する
+## OpenShiftインストール章のPlan検査が失敗する
 
 専用Planスクリプトはaction allowlistと件数を検査します。想定外のactionが出た場合、直接applyしません。
 
@@ -250,6 +250,18 @@ oc get events -A --sort-by=.lastTimestamp
 
 ## `terraform destroy`が完了しない
 
+`scripts/08-02-apply-destroy.sh`が次で停止した場合、Terraform Applyはまだ開始されていません。
+
+```text
+ERROR: 1 non-terminated Client VPN connection(s) remain.
+```
+
+旧版では`active or terminating Client VPN connection(s) remain`と表示されますが、対処は同じです。
+
+WindowsのAWS VPN Clientを切断し、スクリプトが表示する`ConnectionId`、`Status`、`StatusMessage`を確認します。`terminating`ならAWS側の終了処理を待ちます。Windows側が切断済みなのに`active`のまま、または`failed-to-terminate`なら、[08章の手順5](08-destroy.md#5-windowsのclient-vpnを切断する)にある、ConnectionIdを照合して1件だけ終了する手順を使用します。`failed-to-terminate`が再発する場合はdestroyへ進まず、StatusMessage、IAM権限、AWS APIエラーを調査します。接続状態の確認・終了ではTerraform stateや保存済みdestroy Planは変わらないため、接続が消えた後は`08-01`で再Planせず、同じ`08-02`を再実行します。
+
+`08-02`がstate lineage/serial、Plan SHA-256、Account、region、workspaceの不一致を報告した場合だけ、[08章の手順6.1](08-destroy.md#61-staleまたは不採用のdestroy-planを明示破棄する)でそのPlanを明示破棄して`08-01`から作り直します。
+
 エラーに表示されたIDを記録し、AWSコンソールから依存リソースを手動削除しません。典型的な依存関係:
 
 - Subnetを消す前にClient VPN association、NLB ENI、NAT Gatewayを削除。
@@ -257,11 +269,23 @@ oc get events -A --sort-by=.lastTimestamp
 - ACM証明書を消す前にClient VPN Endpointから参照を外す。
 - Hosted Zoneを消さない。
 
-エラーの原因を解消した後、`scripts/11-plan-destroy.sh`からPlanを作り直します。state外リソースやstate破損が原因で手動介入が不可避な場合は、対象Account/region/resource IDを複数人で確認し、操作記録とstate復旧方針を作成してから管理者が対応します。
+Terraform Apply開始後の依存エラーを解消した後は、`scripts/08-01-plan-destroy.sh`からPlanを作り直します。state外リソースやstate破損が原因で手動介入が不可避な場合は、対象Account/region/resource IDを複数人で確認し、操作記録とstate復旧方針を作成してから管理者が対応します。
 
 `Saved plan is stale`は、Plan作成後にstateが変わったことを示します。古い`destroy.tfplan`を適用せず、次を再実行します。
 
 ```bash
-bash scripts/11-plan-destroy.sh
-bash scripts/12-apply-destroy.sh
+bash scripts/08-01-plan-destroy.sh --discard-saved-plan
+bash scripts/08-01-plan-destroy.sh
 ```
+
+Planが再作成できたら、[08章の手順4](08-destroy.md#4-保存済みdestroy-planをレビューする)へ戻ります。全resource addressの人手レビューと[手順5](08-destroy.md#5-windowsのclient-vpnを切断する)のVPN切断を完了した後だけ、手順6のApplyを実行します。
+
+## ローカルarchive後にcleanup markerが見つからない
+
+`scripts/08-05-clean-local-artifacts.sh --archive`が成功すると、`cleanup-validated.json`も生成物と一緒にアーカイブへ移ります。その後、元のパスに対して通常の`--delete`や`--include-pki`を実行すると、次の安全停止になります。
+
+```text
+ERROR: Local artifacts were already archived, so the active cleanup marker is no longer present.
+```
+
+これはAWS cleanupの失敗ではありません。`--archive`と通常の`--delete`は択一であり、元の生成物はすでに隔離済みです。既存アーカイブへ保持PKIを追加する場合は[08章の手順10.1](08-destroy.md#101-アーカイブ後に保持pkiを同じ場所へ隔離する)、アーカイブ全体を永久削除する場合は[手順10.2](08-destroy.md#102-隔離済みアーカイブを後から永久削除する)を使用します。cleanup markerを手動で元へ戻したり、元のパスを直接再帰削除したりしません。

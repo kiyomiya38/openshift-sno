@@ -87,7 +87,7 @@ lab_resolve_expected_account_id() {
   fi
 
   lab_safety_error \
-    "Expected AWS account is not registered. Set EXPECTED_AWS_ACCOUNT_ID or create $LAB_EXPECTED_ACCOUNT_FILE."
+    "Expected AWS account is not registered. Run scripts/02-01-register-expected-account.sh first."
 }
 
 lab_assert_aws_identity() {
@@ -115,6 +115,94 @@ lab_export_expected_account_id() {
   TF_VAR_expected_account_id="$(lab_resolve_expected_account_id \
     "$mode" "$terraform_dir" "$certificate_arn_file")" || return 1
   export TF_VAR_expected_account_id
+}
+
+# `terraform state pull` returns a successful, empty response when the local
+# backend has been initialized but no state has been created yet. Treat only
+# that exact response as an absent state. A command failure or malformed JSON
+# remains an error so an inaccessible or corrupt state is never mistaken for an
+# empty environment.
+lab_pull_state_json_allow_absent() {
+  local terraform_dir="$1"
+  local state_json=''
+
+  if ! state_json="$(terraform -chdir="$terraform_dir" state pull 2>/dev/null)"; then
+    lab_safety_error 'Unable to read the Terraform state.'
+    return 1
+  fi
+
+  if [[ -z "$state_json" ]]; then
+    return 0
+  fi
+
+  if ! jq -e '
+      type == "object" and
+      (.version | type == "number") and
+      (.serial | type == "number") and
+      (.lineage | type == "string") and
+      (.resources | type == "array")
+    ' <<<"$state_json" >/dev/null; then
+    lab_safety_error 'Terraform returned malformed or incomplete state JSON.'
+    return 1
+  fi
+
+  printf '%s\n' "$state_json"
+}
+
+lab_managed_state_count_allow_absent() {
+  local terraform_dir="$1"
+  local state_list='' managed_count=''
+
+  state_list="$(lab_state_list_allow_absent "$terraform_dir")" || return 1
+  if [[ -z "$state_list" ]]; then
+    printf '0\n'
+    return 0
+  fi
+
+  managed_count="$(printf '%s' "$state_list" | grep -vc '^data\.' || true)"
+  if [[ ! "$managed_count" =~ ^[0-9]+$ ]]; then
+    lab_safety_error 'Unable to count managed resources in Terraform state.'
+    return 1
+  fi
+  printf '%s\n' "$managed_count"
+}
+
+# Return Terraform state addresses while preserving the distinction between an
+# initialized backend with no state and a state read/list failure.
+lab_state_list_allow_absent() {
+  local terraform_dir="$1"
+  local state_json='' state_list=''
+
+  state_json="$(lab_pull_state_json_allow_absent "$terraform_dir")" || return 1
+  if [[ -z "$state_json" ]]; then
+    return 0
+  fi
+
+  if ! state_list="$(terraform -chdir="$terraform_dir" state list 2>/dev/null)"; then
+    lab_safety_error 'Unable to list Terraform state addresses.'
+    return 1
+  fi
+  [[ -z "$state_list" ]] || printf '%s\n' "$state_list"
+}
+
+# Later construction stages and post-apply checks require an actual state
+# document. An absent state is therefore an error before the initial Network
+# Plan has been applied.
+lab_state_list_required() {
+  local terraform_dir="$1"
+  local state_json='' state_list=''
+
+  state_json="$(lab_pull_state_json_allow_absent "$terraform_dir")" || return 1
+  if [[ -z "$state_json" ]]; then
+    lab_safety_error 'Terraform state has not been created yet.'
+    return 1
+  fi
+
+  if ! state_list="$(terraform -chdir="$terraform_dir" state list 2>/dev/null)"; then
+    lab_safety_error 'Unable to list Terraform state addresses.'
+    return 1
+  fi
+  [[ -z "$state_list" ]] || printf '%s\n' "$state_list"
 }
 
 lab_managed_plan_actions() {

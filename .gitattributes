@@ -1,0 +1,11 @@
+* text=auto
+
+# WSL/Linuxで実行・解釈するファイルは、Windows上のcheckoutでもLFを維持する。
+*.sh text eol=lf
+*.yaml text eol=lf
+*.yml text eol=lf
+*.tf text eol=lf
+*.tfvars text eol=lf
+*.tftpl text eol=lf
+*.md text eol=lf
+configs/environment.example text eol=lf
