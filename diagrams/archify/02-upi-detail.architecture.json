@@ -1,0 +1,301 @@
+{
+  "schema_version": 1,
+  "diagram_type": "architecture",
+  "meta": {
+    "title": "OpenShift UPI模擬ラボ：AWS詳細",
+    "output": "02-upi-detail.html",
+    "quality_profile": "showcase"
+  },
+  "layout": {
+    "mode": "grid",
+    "origin": [
+      48,
+      84
+    ],
+    "cols": 4,
+    "gapX": 190,
+    "gapY": 82,
+    "cellW": 158,
+    "cellH": 76
+  },
+  "components": [
+    {
+      "id": "upi-admin",
+      "type": "external",
+      "label": "管理端末",
+      "sublabel": "Windows 11 / WSL2",
+      "row": 0,
+      "col": 0,
+      "size": [
+        158,
+        70
+      ]
+    },
+    {
+      "id": "upi-vpn",
+      "type": "security",
+      "label": "AWS Client VPN",
+      "sublabel": "10.81.0.0/22 / UDP 443",
+      "tag": "Split tunnel・2 AZ association",
+      "row": 0,
+      "col": 1,
+      "size": [
+        184,
+        76
+      ]
+    },
+    {
+      "id": "upi-dns-ntp",
+      "type": "backend",
+      "label": "BIND + chrony ×2",
+      "sublabel": "10.80.40.11 / 10.80.50.11",
+      "tag": "DNS :53 / NTP :123",
+      "row": 1,
+      "col": 1,
+      "size": [
+        190,
+        76
+      ]
+    },
+    {
+      "id": "upi-nlb",
+      "type": "cloud",
+      "label": "Internal NLB",
+      "sublabel": "10.80.10.5 / .20.5 / .30.5",
+      "tag": "Cross-zone / TCP passthrough",
+      "row": 0,
+      "col": 2,
+      "size": [
+        194,
+        78
+      ]
+    },
+    {
+      "id": "upi-haproxy",
+      "type": "backend",
+      "label": "HAProxy ×2",
+      "sublabel": "10.80.40.21 / 10.80.50.21",
+      "tag": "3a / 3b",
+      "row": 0,
+      "col": 3,
+      "size": [
+        188,
+        76
+      ]
+    },
+    {
+      "id": "upi-openshift-nodes",
+      "type": "backend",
+      "label": "OpenShift Nodes",
+      "sublabel": "Control Plane ×3 / Worker ×3",
+      "tag": "3 AZ・各gp3 150 GiB",
+      "row": 2,
+      "col": 2,
+      "size": [
+        204,
+        80
+      ]
+    },
+    {
+      "id": "upi-nfs",
+      "type": "database",
+      "label": "NFS-0",
+      "sublabel": "10.80.40.41 / NFSv4.1 :2049",
+      "tag": "単一障害点",
+      "row": 2,
+      "col": 3,
+      "size": [
+        188,
+        76
+      ]
+    },
+    {
+      "id": "upi-bootstrap",
+      "type": "backend",
+      "label": "Bootstrap",
+      "sublabel": "10.80.10.30 / 構築時のみ",
+      "tag": "完了後に削除",
+      "row": 2,
+      "col": 1,
+      "size": [
+        186,
+        74
+      ]
+    },
+    {
+      "id": "upi-installer",
+      "type": "backend",
+      "label": "Installer / Ansible / Apache",
+      "sublabel": "10.80.40.10 / Ignition :8080",
+      "tag": "Apacheは構築時のみ",
+      "row": 3,
+      "col": 1,
+      "size": [
+        204,
+        78
+      ]
+    },
+    {
+      "id": "upi-proxy-registry",
+      "type": "backend",
+      "label": "Squid / Mirror Registry",
+      "sublabel": "10.80.40.31 / :3128・:5000",
+      "tag": "単一障害点・Registry未統合",
+      "row": 3,
+      "col": 2,
+      "size": [
+        210,
+        80
+      ]
+    },
+    {
+      "id": "upi-nat-igw",
+      "type": "cloud",
+      "label": "NAT Gateway + IGW",
+      "sublabel": "Public-a 10.80.110.0/24",
+      "tag": "単一障害点・Internet出口",
+      "row": 3,
+      "col": 3,
+      "size": [
+        198,
+        78
+      ]
+    }
+  ],
+  "boundaries": [
+    {
+      "kind": "region",
+      "label": "AWS ap-northeast-3 / VPC 10.80.0.0/16 / 3 AZ / EC2 Public IPv4なし",
+      "wraps": [
+        "upi-vpn",
+        "upi-dns-ntp",
+        "upi-nlb",
+        "upi-haproxy",
+        "upi-openshift-nodes",
+        "upi-nfs",
+        "upi-bootstrap",
+        "upi-installer",
+        "upi-proxy-registry",
+        "upi-nat-igw"
+      ],
+      "pad": 32
+    }
+  ],
+  "connections": [
+    {
+      "id": "upi-admin-vpn",
+      "from": "upi-admin",
+      "to": "upi-vpn",
+      "label": "Internet UDP 443",
+      "variant": "security"
+    },
+    {
+      "id": "upi-vpn-dns",
+      "from": "upi-vpn",
+      "to": "upi-dns-ntp",
+      "label": "DNS TCP/UDP 53",
+      "variant": "security",
+      "fromSide": "bottom",
+      "toSide": "top"
+    },
+    {
+      "id": "upi-dns-nlb",
+      "from": "upi-dns-ntp",
+      "to": "upi-nlb",
+      "label": "api / api-int / *.apps",
+      "variant": "dashed"
+    },
+    {
+      "id": "upi-vpn-nlb",
+      "from": "upi-vpn",
+      "to": "upi-nlb",
+      "label": "API/Apps",
+      "variant": "emphasis"
+    },
+    {
+      "id": "upi-nlb-haproxy",
+      "from": "upi-nlb",
+      "to": "upi-haproxy",
+      "label": "TCP passthrough",
+      "variant": "emphasis"
+    },
+    {
+      "id": "upi-haproxy-nodes",
+      "from": "upi-haproxy",
+      "to": "upi-openshift-nodes",
+      "label": "6443 / 22623 / 80 / 443",
+      "variant": "emphasis"
+    },
+    {
+      "id": "upi-nodes-nfs",
+      "from": "upi-openshift-nodes",
+      "to": "upi-nfs"
+    },
+    {
+      "id": "upi-haproxy-bootstrap",
+      "from": "upi-haproxy",
+      "to": "upi-bootstrap",
+      "label": "構築時API / MCS backend",
+      "variant": "dashed",
+      "fromSide": "bottom",
+      "toSide": "top"
+    },
+    {
+      "id": "upi-installer-bootstrap",
+      "from": "upi-installer",
+      "to": "upi-bootstrap",
+      "label": "Ignition HTTP 8080 + SHA-512",
+      "variant": "dashed",
+      "fromSide": "top",
+      "toSide": "bottom"
+    },
+    {
+      "id": "upi-installer-nodes",
+      "from": "upi-installer",
+      "to": "upi-openshift-nodes",
+      "label": "Ignition HTTP 8080 + SHA-512",
+      "variant": "dashed",
+      "fromSide": "right",
+      "toSide": "bottom"
+    },
+    {
+      "id": "upi-nodes-proxy",
+      "from": "upi-openshift-nodes",
+      "to": "upi-proxy-registry",
+      "fromSide": "bottom",
+      "toSide": "top"
+    },
+    {
+      "id": "upi-proxy-nat",
+      "from": "upi-proxy-registry",
+      "to": "upi-nat-igw",
+      "label": "Red Hat / Quayへ外向き通信"
+    }
+  ],
+  "cards": [
+    {
+      "dot": "cyan",
+      "title": "AZ / Subnet",
+      "items": [
+        "Cluster-a/b/c: 10.80.10/20/30.0/24、Infra-a/b/c: 10.80.40/50/60.0/24",
+        "Public-a/b/c: 10.80.110/120/130.0/24。現行のEC2とNATは主に3a・3bへ配置"
+      ]
+    },
+    {
+      "dot": "amber",
+      "title": "OpenShiftネットワークと公開範囲",
+      "items": [
+        "Machine 10.80.0.0/16、Cluster 10.128.0.0/14（/23）、Service 172.30.0.0/16",
+        "platform: none。Client VPNはAPI 6443とIngress 80/443のみ。MCS 22623はVPN非公開で、Internetにも直接公開しない"
+      ]
+    },
+    {
+      "dot": "rose",
+      "title": "可用性と未統合機能",
+      "items": [
+        "NAT Gateway、Proxy/Registry、NFSは単一障害点。環境全体を完全HAとは呼ばない",
+        "Mirror Registryは将来用で現行クラスター未統合。Proxyもネットワークレベルでは強制しない"
+      ]
+    }
+  ]
+}

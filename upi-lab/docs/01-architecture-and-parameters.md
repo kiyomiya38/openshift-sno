@@ -6,6 +6,14 @@ TerraformとAnsibleで共通利用する固定値を確認します。この章�
 
 利用者固有値と固定プロファイルの境界は[設定方針](../configs/README.md)を参照してください。
 
+## Archify詳細図
+
+![管理端末、Client VPN、Internal NLB、HAProxy、OpenShiftノードと、構築・運用を支えるDNS、NTP、NFS、Installer、Proxy、Registry、NATの詳細図。](../../diagrams/archify/02-upi-detail.svg)
+
+[操作可能なHTML（GitHub Pages）](https://kiyomiya38.github.io/openshift-sno/02-upi-detail.html) / [PNG](../../diagrams/archify/02-upi-detail.png) / [SVG](../../diagrams/archify/02-upi-detail.svg) / [SNOとの比較図（GitHub Pages）](https://kiyomiya38.github.io/openshift-sno/00-sno-upi-comparison.html)
+
+破線は構築時だけ使う経路を含みます。IP、CIDR、主要ポート、単一障害点はノードと補足カードに集約しています。
+
 ## 全体アーキテクチャ
 
 ![OpenShift UPIラボの全体アーキテクチャ。管理端末からClient VPNを経由してInternal NLB、HAProxy、OpenShiftノードへ到達し、VPC内にDNS、NTP、Proxy、Registry、NFS、Installerを配置する。](../diagrams/01-architecture-overview.svg)

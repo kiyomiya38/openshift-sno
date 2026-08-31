@@ -3,6 +3,22 @@
 ## この章の目的
 AWS 資源と OpenShift 機能の対応を理解します。
 
+## Archifyアーキテクチャ図
+
+### SNO / UPI 比較
+
+![AWS IPIのSingle Node OpenShiftと、platform noneで構成するUPI模擬ラボの比較図。](../diagrams/archify/00-sno-upi-comparison.svg)
+
+[操作可能なHTML（GitHub Pages）](https://kiyomiya38.github.io/openshift-sno/00-sno-upi-comparison.html) / [PNG](../diagrams/archify/00-sno-upi-comparison.png) / [SVG](../diagrams/archify/00-sno-upi-comparison.svg)
+
+### SNO（AWS IPI）詳細
+
+![利用者と管理端末から、Route 53、External Load Balancer、SNOノード、EBS、NAT Gatewayへ至るAWS IPI詳細図。](../diagrams/archify/01-sno-ipi-detail.svg)
+
+[操作可能なHTML（GitHub Pages）](https://kiyomiya38.github.io/openshift-sno/01-sno-ipi-detail.html) / [PNG](../diagrams/archify/01-sno-ipi-detail.png) / [SVG](../diagrams/archify/01-sno-ipi-detail.svg)
+
+UPI側の詳細は[UPI構成とパラメーター](../upi-lab/docs/01-architecture-and-parameters.md#archify詳細図)を参照してください。
+
 ## 構成の説明
 
 | AWS 資源 | OpenShift での役割 | 必要性・課金 | 削除時の注意 |
@@ -27,4 +43,3 @@ AWS 資源と OpenShift 機能の対応を理解します。
 
 ## 次の章へ進む条件
 [前提条件](02-prerequisites.md) を準備できること。
-

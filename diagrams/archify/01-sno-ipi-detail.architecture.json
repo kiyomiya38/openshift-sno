@@ -1,0 +1,247 @@
+{
+  "schema_version": 1,
+  "diagram_type": "architecture",
+  "meta": {
+    "title": "Single Node OpenShift：AWS IPI詳細",
+    "output": "01-sno-ipi-detail.html",
+    "quality_profile": "showcase"
+  },
+  "layout": {
+    "mode": "grid",
+    "origin": [
+      58,
+      84
+    ],
+    "cols": 6,
+    "gapX": 120,
+    "gapY": 82,
+    "cellW": 164,
+    "cellH": 74
+  },
+  "components": [
+    {
+      "id": "sno-client",
+      "type": "external",
+      "label": "利用者 / oc / Browser",
+      "row": 0,
+      "col": 0,
+      "size": [
+        170,
+        70
+      ]
+    },
+    {
+      "id": "sno-route53",
+      "type": "cloud",
+      "label": "Route 53：api / *.apps",
+      "row": 0,
+      "col": 1,
+      "size": [
+        174,
+        70
+      ]
+    },
+    {
+      "id": "sno-load-balancers",
+      "type": "cloud",
+      "label": "External LB：API / Ingress",
+      "row": 0,
+      "col": 2,
+      "size": [
+        188,
+        74
+      ]
+    },
+    {
+      "id": "sno-node",
+      "type": "backend",
+      "label": "SNO EC2：CP兼Worker",
+      "row": 0,
+      "col": 3,
+      "size": [
+        202,
+        78
+      ]
+    },
+    {
+      "id": "sno-ebs",
+      "type": "database",
+      "label": "EBS gp3：150 GiB",
+      "row": 0,
+      "col": 4,
+      "size": [
+        164,
+        68
+      ]
+    },
+    {
+      "id": "sno-admin",
+      "type": "external",
+      "label": "WSL2管理端末",
+      "row": 2,
+      "col": 0,
+      "size": [
+        170,
+        70
+      ]
+    },
+    {
+      "id": "sno-aws-api",
+      "type": "cloud",
+      "label": "AWS API",
+      "row": 2,
+      "col": 1,
+      "size": [
+        184,
+        72
+      ]
+    },
+    {
+      "id": "sno-bootstrap",
+      "type": "backend",
+      "label": "Bootstrap（一時資源）",
+      "row": 2,
+      "col": 3,
+      "size": [
+        184,
+        72
+      ]
+    },
+    {
+      "id": "sno-nat-igw",
+      "type": "cloud",
+      "label": "NAT Gateway / IGW",
+      "row": 2,
+      "col": 4,
+      "size": [
+        184,
+        72
+      ]
+    },
+    {
+      "id": "sno-external-services",
+      "type": "external",
+      "label": "Red Hat / Quay / AWS",
+      "row": 2,
+      "col": 5,
+      "size": [
+        184,
+        72
+      ]
+    }
+  ],
+  "boundaries": [
+    {
+      "kind": "region",
+      "label": "AWS ap-northeast-3 / IPI VPC・Machine Network 10.0.0.0/16",
+      "wraps": [
+        "sno-route53",
+        "sno-load-balancers",
+        "sno-node",
+        "sno-ebs",
+        "sno-aws-api",
+        "sno-bootstrap",
+        "sno-nat-igw"
+      ],
+      "pad": 34
+    }
+  ],
+  "connections": [
+    {
+      "id": "sno-client-dns",
+      "from": "sno-client",
+      "to": "sno-route53",
+      "label": "Public DNS問合せ",
+      "variant": "emphasis"
+    },
+    {
+      "id": "sno-dns-lb",
+      "from": "sno-route53",
+      "to": "sno-load-balancers",
+      "label": "api / *.apps",
+      "variant": "emphasis"
+    },
+    {
+      "id": "sno-lb-node",
+      "from": "sno-load-balancers",
+      "to": "sno-node",
+      "label": "6443 / 80 / 443",
+      "variant": "emphasis"
+    },
+    {
+      "id": "sno-node-ebs",
+      "from": "sno-node",
+      "to": "sno-ebs",
+      "label": "永続化"
+    },
+    {
+      "id": "sno-admin-api",
+      "from": "sno-admin",
+      "to": "sno-aws-api",
+      "label": "Installer / oc",
+      "variant": "security"
+    },
+    {
+      "id": "sno-api-node",
+      "from": "sno-aws-api",
+      "to": "sno-node",
+      "label": "EC2・RHCOSを作成",
+      "variant": "security"
+    },
+    {
+      "id": "sno-api-bootstrap",
+      "from": "sno-aws-api",
+      "to": "sno-bootstrap",
+      "label": "構築時のみ作成",
+      "variant": "dashed",
+      "labelDy": 30
+    },
+    {
+      "id": "sno-bootstrap-node",
+      "from": "sno-bootstrap",
+      "to": "sno-node",
+      "label": "Bootstrap完了後に削除",
+      "variant": "dashed",
+      "fromSide": "top",
+      "toSide": "bottom"
+    },
+    {
+      "id": "sno-node-nat",
+      "from": "sno-node",
+      "to": "sno-nat-igw",
+      "label": "Private route"
+    },
+    {
+      "id": "sno-nat-external",
+      "from": "sno-nat-igw",
+      "to": "sno-external-services",
+      "label": "HTTPS外向き通信"
+    }
+  ],
+  "cards": [
+    {
+      "dot": "cyan",
+      "title": "OpenShiftネットワーク",
+      "items": [
+        "Machine 10.0.0.0/16、Cluster 10.128.0.0/14（hostPrefix /23）",
+        "Service 172.30.0.0/16、OVNKubernetes、publish: External"
+      ]
+    },
+    {
+      "dot": "amber",
+      "title": "値の扱い",
+      "items": [
+        "クラスターFQDNは ${CLUSTER_NAME}.${BASE_DOMAIN} として抽象化",
+        "AZ、Subnet、LB種別などの実値はmetadata.json、infraID、クラスタタグで確認"
+      ]
+    },
+    {
+      "dot": "rose",
+      "title": "可用性と責任",
+      "items": [
+        "SNOは1ノードのため高可用ではない",
+        "IPI資源を個別に手作業変更せず、OpenShift Installerに作成・削除を任せる"
+      ]
+    }
+  ]
+}

@@ -1,0 +1,203 @@
+{
+  "schema_version": 1,
+  "diagram_type": "architecture",
+  "meta": {
+    "title": "SNO（AWS IPI）とUPI模擬ラボの比較",
+    "output": "00-sno-upi-comparison.html",
+    "quality_profile": "showcase"
+  },
+  "layout": {
+    "mode": "grid",
+    "origin": [
+      70,
+      90
+    ],
+    "cols": 5,
+    "gapX": 160,
+    "gapY": 92,
+    "cellW": 176,
+    "cellH": 76
+  },
+  "components": [
+    {
+      "id": "admin-workstation",
+      "type": "external",
+      "label": "管理端末",
+      "sublabel": "Windows 11 / WSL2 Ubuntu",
+      "row": 1,
+      "col": 0,
+      "size": [
+        176,
+        70
+      ]
+    },
+    {
+      "id": "ipi-installer",
+      "type": "backend",
+      "label": "OpenShift Installer",
+      "sublabel": "SNO用 install-config",
+      "tag": "IPI",
+      "row": 0,
+      "col": 1,
+      "size": [
+        176,
+        72
+      ]
+    },
+    {
+      "id": "ipi-infrastructure",
+      "type": "cloud",
+      "label": "IPI管理のAWS基盤",
+      "sublabel": "VPC / DNS / LB / IAM / SG",
+      "tag": "自動作成・追跡",
+      "row": 0,
+      "col": 2,
+      "size": [
+        190,
+        76
+      ]
+    },
+    {
+      "id": "sno-cluster",
+      "type": "backend",
+      "label": "Single Node OpenShift",
+      "sublabel": "Control Plane兼Worker ×1",
+      "tag": "非HA",
+      "row": 0,
+      "col": 3,
+      "size": [
+        190,
+        76
+      ]
+    },
+    {
+      "id": "upi-automation",
+      "type": "backend",
+      "label": "Terraform + Ansible",
+      "sublabel": "利用者が基盤とサービスを構築",
+      "tag": "UPI",
+      "row": 2,
+      "col": 1,
+      "size": [
+        190,
+        76
+      ]
+    },
+    {
+      "id": "upi-infrastructure",
+      "type": "cloud",
+      "label": "利用者管理のAWS基盤",
+      "sublabel": "VPN / BIND / NLB / HAProxy",
+      "tag": "platform: none",
+      "row": 2,
+      "col": 2,
+      "size": [
+        190,
+        76
+      ]
+    },
+    {
+      "id": "upi-cluster",
+      "type": "backend",
+      "label": "OpenShift UPI模擬",
+      "sublabel": "Control Plane ×3 / Worker ×3",
+      "tag": "3 AZ・完全HAではない",
+      "row": 2,
+      "col": 3,
+      "size": [
+        204,
+        78
+      ]
+    }
+  ],
+  "boundaries": [
+    {
+      "kind": "region",
+      "label": "SNOラボ：AWS IPI / Installer管理",
+      "wraps": [
+        "ipi-infrastructure",
+        "sno-cluster"
+      ],
+      "pad": 34
+    },
+    {
+      "kind": "region",
+      "label": "UPI模擬ラボ：platform: none / 利用者管理",
+      "wraps": [
+        "upi-infrastructure",
+        "upi-cluster"
+      ],
+      "pad": 34
+    }
+  ],
+  "connections": [
+    {
+      "id": "admin-to-ipi",
+      "from": "admin-workstation",
+      "to": "ipi-installer",
+      "label": "openshift-install",
+      "variant": "emphasis"
+    },
+    {
+      "id": "ipi-to-aws",
+      "from": "ipi-installer",
+      "to": "ipi-infrastructure",
+      "label": "AWS APIで自動作成",
+      "variant": "emphasis"
+    },
+    {
+      "id": "aws-to-sno",
+      "from": "ipi-infrastructure",
+      "to": "sno-cluster",
+      "label": "作成・追跡・削除",
+      "variant": "emphasis"
+    },
+    {
+      "id": "admin-to-upi",
+      "from": "admin-workstation",
+      "to": "upi-automation",
+      "label": "Terraform / Ansible",
+      "variant": "security"
+    },
+    {
+      "id": "automation-to-infra",
+      "from": "upi-automation",
+      "to": "upi-infrastructure",
+      "label": "AWS API・SSHで構築",
+      "variant": "security"
+    },
+    {
+      "id": "infra-to-upi",
+      "from": "upi-infrastructure",
+      "to": "upi-cluster",
+      "label": "DNS・LB・Ignitionを提供",
+      "variant": "security"
+    }
+  ],
+  "cards": [
+    {
+      "dot": "cyan",
+      "title": "責任分界",
+      "items": [
+        "SNOではOpenShift InstallerがAWS資源を作成・追跡する",
+        "UPI模擬では利用者がTerraform、Ansible、構築順序を管理する"
+      ]
+    },
+    {
+      "dot": "amber",
+      "title": "公開方式",
+      "items": [
+        "SNOはpublish: ExternalでAPI・Ingressを外部公開する",
+        "UPI模擬はAWS Client VPN経由の内部公開で、EC2にPublic IPv4を付与しない"
+      ]
+    },
+    {
+      "dot": "rose",
+      "title": "学習環境の制約",
+      "items": [
+        "SNOは1ノードのため高可用ではない",
+        "UPI模擬はNAT、Proxy/Registry、NFSに意図的な単一障害点がある"
+      ]
+    }
+  ]
+}
